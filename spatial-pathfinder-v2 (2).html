@@ -1,0 +1,1142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Digital Library - Spatial Pathfinder</title>
+  <style>
+    :root {
+      --bg:#000; --fg:#f5f5f5; --muted:#a3a3a3; --border:#3a3a3a;
+      --surface:#0e0e0e; --accent:#fff; --accent-fg:#000; --focus:#6db3ff;
+    }
+    * { box-sizing:border-box; }
+    html, body {
+      margin:0; padding:0; background:var(--bg); color:var(--fg);
+      font-family:Helvetica, Arial, sans-serif; font-size:18px; line-height:1.5;
+      -webkit-font-smoothing:antialiased;
+    }
+    body { padding:40px 20px 64px; max-width:720px; margin:0 auto; }
+
+    .sr-only {
+      position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+      overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
+    }
+    a.skip-link {
+      position:absolute; left:-999px; top:0;
+      background:var(--fg); color:var(--bg); padding:8px 12px; z-index:100;
+    }
+    a.skip-link:focus { left:8px; top:8px; }
+
+    h2.section-heading { font-size:19px; font-weight:bold; letter-spacing:.01em; margin:0 0 20px; }
+    h3.sub-heading {
+      font-size:14px; font-weight:bold; text-transform:uppercase;
+      letter-spacing:.08em; margin:0 0 8px; color:var(--muted);
+    }
+    .stack { display:flex; flex-direction:column; gap:14px; }
+    /* compass layout: North top-center, West/East middle, South bottom-center */
+    .compass-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-rows: auto auto auto;
+      gap: 14px;
+    }
+    .compass-grid .tile-north { grid-column: 2; grid-row: 1; }
+    .compass-grid .tile-west  { grid-column: 1; grid-row: 2; }
+    .compass-grid .tile-east  { grid-column: 3; grid-row: 2; }
+    .compass-grid .tile-south { grid-column: 2; grid-row: 3; }
+
+    button {
+      font-family:Helvetica, Arial, sans-serif; font-size:17px; color:var(--fg);
+      background:var(--surface); border:1px solid var(--border); padding:16px 18px;
+      text-align:left; cursor:pointer; width:100%; line-height:1.4;
+      transition:background .15s ease, border-color .15s ease;
+    }
+    button:hover { background:#1a1a1a; border-color:#555; }
+    button:focus-visible, button:focus { outline:2px solid var(--focus); outline-offset:2px; }
+    button[disabled] { opacity:.35; cursor:not-allowed; }
+
+    button.tile {
+      aspect-ratio:1/1; display:flex; flex-direction:column;
+      align-items:flex-start; justify-content:flex-end; padding:20px;
+      font-size:18px; font-weight:bold;
+    }
+    button.tile .tile-sub {
+      display:block; font-size:12px; font-weight:normal; text-transform:uppercase;
+      letter-spacing:.08em; color:var(--muted); margin-top:6px;
+    }
+    @media (max-width:480px){ button.tile { aspect-ratio:auto; min-height:96px; } }
+
+    button.primary {
+      background:var(--accent); color:var(--accent-fg); border-color:var(--accent);
+      text-align:center; font-weight:bold;
+    }
+    button.primary:hover { background:#dcdcdc; border-color:#dcdcdc; }
+    button.center { text-align:center; }
+
+    .btn-sub { display:block; font-size:13px; color:var(--muted); margin-top:4px; }
+    button.primary .btn-sub { color:#333; }
+
+    .book-card { border:1px solid var(--border); background:var(--surface); padding:18px; margin-bottom:18px; }
+    .book-card .label { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:0 0 6px; }
+    .book-card h2 { font-size:22px; margin:0 0 4px; }
+    .book-card .author { font-size:16px; color:var(--muted); margin:0; }
+
+    p.summary { font-size:17px; margin:0 0 18px; }
+    .detail-box { border:1px solid var(--border); background:var(--surface); padding:14px; font-size:16px; }
+    .row { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:10px; }
+    .pos-indicator { font-size:13px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin:0 0 14px; }
+    section.block { border-top:1px solid var(--border); padding-top:18px; margin-top:18px; }
+
+    .modal-backdrop {
+      position:fixed; inset:0; background:rgba(0,0,0,.7);
+      display:flex; align-items:center; justify-content:center; padding:16px;
+    }
+    .modal-backdrop.hidden { display:none; }
+    .modal {
+      background:var(--bg); border:1px solid var(--border); padding:22px;
+      max-width:480px; width:100%; max-height:90vh; overflow-y:auto;
+    }
+    .modal h2 { font-size:20px; margin:0 0 18px; padding-bottom:12px; border-bottom:1px solid var(--border); }
+
+    #fatal-error {
+      display:none; border:1px solid #b00; background:#1a0000; color:#ff8a8a;
+      padding:14px; margin-bottom:18px; font-size:14px; white-space:pre-wrap; border-radius:6px;
+    }
+
+    /* ── Door card (corridor screen) ───────────────────────────────────── */
+    .door-card {
+      border: 2px solid var(--fg);
+      display: flex;
+      flex-direction: column;
+      padding: 28px 24px 28px;
+      min-height: 460px;
+    }
+    .door-title-block { margin-bottom: auto; }
+    .door-title-block h2 { font-size: 22px; margin: 0 0 6px; font-weight: bold; }
+    .door-title-block .author { font-size: 15px; color: var(--muted); margin: 0; }
+    .door-controls {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 28px;
+      margin-top: 36px;
+    }
+    button.icon-btn {
+      width: 64px; height: 64px; border-radius: 50%;
+      background: var(--fg); color: var(--bg); border: none;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; padding: 0; flex-shrink: 0;
+    }
+    button.icon-btn:focus-visible, button.icon-btn:focus {
+      outline: 2px solid var(--focus); outline-offset: 3px;
+    }
+    button.icon-btn svg { display: block; pointer-events: none; }
+    button.doorknob-btn {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: transparent; border: 2px solid var(--fg);
+      cursor: pointer; padding: 0; margin-left: 14px;
+    }
+    button.doorknob-btn:focus-visible, button.doorknob-btn:focus {
+      outline: 2px solid var(--focus); outline-offset: 3px;
+    }
+
+    /* ── Fixed bottom bar ──────────────────────────────────────────────── */
+    .bottom-bar {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--bg); border-top: 1px solid var(--border);
+      display: flex; gap: 10px; padding: 10px 16px 24px; z-index: 50;
+    }
+    .bottom-bar button {
+      flex: 1; font-size: 13px; padding: 10px 8px; text-align: center;
+    }
+    .location-label {
+      display: block; font-size: 11px; color: var(--muted);
+      margin-top: 3px; text-transform: uppercase; letter-spacing: .06em;
+    }
+    .current-location-display {
+      flex: 1; font-size: 13px; padding: 10px 8px;
+      display: flex; flex-direction: column; justify-content: center;
+    }
+    .current-location-title {
+      font-size: 11px; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .06em;
+    }
+    body { padding-bottom: 100px; }
+
+    /* ── Room screen ───────────────────────────────────────────────────── */
+    .room-heading {
+      font-size: 14px; font-weight: bold; text-transform: uppercase;
+      letter-spacing: .08em; color: var(--muted); margin: 0 0 12px;
+    }
+    section.room-section { border-top: 1px solid var(--border); padding-top: 18px; margin-top: 18px; }
+
+    /* 3 square action buttons in a row */
+    .action-row {
+      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;
+    }
+    .action-row button {
+      aspect-ratio: 1/1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      font-size: 12px; text-align: center; padding: 10px 6px;
+      line-height: 1.3;
+    }
+
+    /* 2 path buttons in a row */
+    .path-row {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    }
+
+    /* Feedback drawer */
+    .feedback-drawer {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: #111; border-top: 2px solid var(--border);
+      padding: 20px 20px 36px; z-index: 200;
+      max-height: 80vh; overflow-y: auto;
+      transform: translateY(100%);
+      transition: transform .3s ease;
+    }
+    .feedback-drawer.open { transform: translateY(0); }
+    .feedback-drawer h2 {
+      font-size: 17px; margin: 0 0 20px;
+      border-bottom: 1px solid var(--border); padding-bottom: 12px;
+    }
+    .feedback-field { margin-bottom: 20px; }
+    .feedback-field label {
+      display: block; font-size: 13px; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .07em; margin-bottom: 8px;
+    }
+    .scale-row {
+      display: flex; gap: 6px; flex-wrap: wrap;
+    }
+    .scale-row button {
+      width: 40px; height: 40px; border-radius: 50%;
+      font-size: 14px; font-weight: bold; padding: 0;
+      text-align: center;
+    }
+    .scale-row button.selected {
+      background: var(--accent); color: var(--accent-fg);
+      border-color: var(--accent);
+    }
+    .check-row {
+      display: flex; align-items: center; gap: 12px; font-size: 16px;
+    }
+    .check-row input[type=checkbox] {
+      width: 22px; height: 22px; accent-color: var(--accent);
+    }
+    textarea.feedback-text {
+      width: 100%; background: var(--surface); color: var(--fg);
+      border: 1px solid var(--border); padding: 12px; font-size: 15px;
+      font-family: Helvetica, Arial, sans-serif; resize: vertical;
+      min-height: 80px; border-radius: 0;
+    }
+    .feedback-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .feedback-actions button { flex: 1; min-width: 120px; }
+    .flag-row { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 16px; }
+    .flag-btn {
+      background: transparent; border: 1px solid #b44;
+      color: #e88; font-size: 13px; padding: 10px 14px; width: 100%;
+    }
+
+    /* ── Door cover image ──────────────────────────────────────────────────── */
+    .door-card { position: relative; overflow: hidden; }
+    .door-cover {
+      position: absolute; top: 0; right: 0; bottom: 0;
+      width: 42%;
+      background-size: cover;
+      background-position: center top;
+      background-repeat: no-repeat;
+      opacity: 0.18;
+      pointer-events: none;
+    }
+    /* Fade edge so text stays readable */
+    .door-cover::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(to right, var(--bg) 0%, transparent 40%);
+    }
+
+    /* ── Toast notification ─────────────────────────────────────────────────── */
+    .toast {
+      position: fixed; bottom: 110px; left: 50%; transform: translateX(-50%);
+      background: #222; border: 1px solid var(--border);
+      color: var(--fg); padding: 14px 20px; font-size: 15px;
+      text-align: center; max-width: 320px; width: 90%;
+      z-index: 300; border-radius: 4px;
+      opacity: 0; transition: opacity .3s ease;
+      pointer-events: none;
+    }
+    .toast.visible { opacity: 1; }
+
+    /* ── Through screen: 3-door spatial layout ──────────────────────────── */
+    .through-space {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-rows: auto auto;
+      gap: 14px;
+      margin-top: 8px;
+    }
+    .through-door-front { grid-column: 2; grid-row: 1; }
+    .through-door-left  { grid-column: 1; grid-row: 2; }
+    .through-door-right { grid-column: 3; grid-row: 2; }
+    .through-door {
+      border: 2px solid var(--border);
+      background: var(--surface);
+      padding: 20px 12px;
+      cursor: pointer;
+      text-align: center;
+      font-size: 14px;
+      font-family: Helvetica, Arial, sans-serif;
+      color: var(--fg);
+      line-height: 1.4;
+      min-height: 90px;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: flex-end;
+    }
+    .through-door:focus-visible, .through-door:focus {
+      outline: 2px solid var(--focus); outline-offset: 2px;
+    }
+    .through-door .door-direction {
+      font-size: 10px; text-transform: uppercase; letter-spacing: .1em;
+      color: var(--muted); margin-bottom: 6px;
+    }
+    .through-door .door-knob {
+      width: 10px; height: 10px; border-radius: 50%;
+      border: 1px solid var(--muted); margin: 10px auto 0;
+    }
+
+    /* ── Crumble path list ──────────────────────────────────────────────── */
+    .crumble-list { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+    .crumble-item {
+      border: 1px solid var(--border); background: var(--surface);
+      padding: 12px 14px; cursor: pointer;
+      font-family: Helvetica, Arial, sans-serif; color: var(--fg);
+      text-align: left; width: 100%; font-size: 15px;
+    }
+    .crumble-item:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+    .crumble-item .crumble-author { font-size: 13px; color: var(--muted); margin-top: 3px; }
+  </style>
+</head>
+<body>
+
+  <a href="#dynamic-stage" class="skip-link">Skip to main content</a>
+
+  <!-- Screen reader live region -->
+  <div id="accessibility-announcer" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
+
+  <!-- Visible error surface (only shows if something throws) -->
+  <div id="fatal-error" role="alert"></div>
+
+  <!-- Persistent audio element (reused for all playback; needed for iOS Safari) -->
+  <audio id="book-audio" loop preload="auto" playsinline></audio>
+
+  <!-- Main content -->
+  <main id="dynamic-stage" tabindex="-1"></main>
+
+  <!-- Fixed bottom bar (always visible) -->
+  <div class="bottom-bar" id="bottom-bar">
+    <div class="current-location-display" id="btn-current-location" aria-live="polite">
+      <span class="current-location-title">Current location</span>
+      <span class="location-label" id="location-label"></span>
+    </div>
+    <button onclick="openTravelMenu()" aria-haspopup="dialog" style="font-weight:bold;">
+      Travel options
+    </button>
+  </div>
+
+  <!-- Travel modal -->
+  <div id="travel-modal-backdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-label="Travel Options Menu">
+    <div class="modal">
+      <h2>Travel Options Menu</h2>
+      <div class="stack">
+        <button id="btn-travel-back" onclick="travelBack()">
+          Back to previous location
+          <span class="btn-sub">Step one location backward</span>
+        </button>
+        <button id="btn-travel-beginning" onclick="travelBeginning()">
+          Go to beginning of this corridor
+          <span class="btn-sub">Return to the first door on this floor</span>
+        </button>
+        <button onclick="travelMainHall()">
+          Go to the Main Hall
+          <span class="btn-sub">Reset and start over from the four wings</span>
+        </button>
+        <button id="btn-crumble" onclick="openCrumblePath()">
+          Crumble path
+          <span class="btn-sub">Books you have viewed, most recent first</span>
+        </button>
+        <button class="center" onclick="closeTravelMenu()">Close Menu</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    "use strict";
+
+    // Surface any uncaught error on screen so failures are never silent.
+    function showFatal(msg) {
+      var box = document.getElementById('fatal-error');
+      if (box) { box.style.display = 'block'; box.textContent = 'Error: ' + msg; }
+    }
+    window.addEventListener('error', function (e) {
+      showFatal((e && e.message ? e.message : 'unknown') + (e && e.filename ? ' @ ' + e.lineno : ''));
+    });
+
+    // ── DATA ────────────────────────────────────────────────────────────────
+    var BOOKS = {
+      1:  { id:1,  title:'Anxious People',               author:'Fredrik Backman',     summary:"An incompetent bank robber takes a group of high-maintenance apartment viewers hostage, forcing a hilarious and heartwarming clash of personalities on New Year's Eve.", detailedSummary:"Anna-Lena and Roger are busy buying up apartments to fill a void in their marriage. Julia and Ro are panicky parents-to-be filled with anxiety. Lonely bank manager Zara only visited the open viewing for the high-rise view. Estelle, an 87-year-old grandmother, is surprisingly pleasant and welcoming of the hostage takers' presence. As the police surround the building, these complete strangers find themselves sharing deep bonds of shared human flaws, demonstrating that we are all just doing the best we can in an incredibly anxious world.", musicUrl:"https://yukasatori-pixel.github.io/sound-test/Anxious%20people.MP3", coverUrl:"https://yukasatori-pixel.github.io/sound-test/anxious%20people.png" },
+      2:  { id:2,  title:'Verity',                       author:'Colleen Hoover',      summary:"A struggling writer is hired to complete the remaining books of a highly successful series by an injured author, only to uncover a terrifying, hidden autobiography.", detailedSummary:"Lowen Ashleigh accepts the writing offer of a lifetime from Jeremy Crawford, husband of elite suspense novelist Verity Crawford. Staying at their home to review Verity's chaotic study notes, Lowen discovers an unpromoted, chilling manuscript detailing bone-chilling confessions about Verity's dark psyche and the tragic deaths of their daughters. Struggling with her fast-growing attraction to Jeremy, Lowen must decide whether to expose the horrific pages, uncertain of what is manipulative fiction and what is the devastating truth.", musicUrl:"https://yukasatori-pixel.github.io/sound-test/Verity.MP3", coverUrl:"https://yukasatori-pixel.github.io/sound-test/verity.png" },
+      3:  { id:3,  title:'The Key Lime Garden Inn',      author:'Annie Cabot',         summary:"Maggie Wheeler flees her betrayed life to restore a historic, secret-filled inn on Captiva Island, Florida, discovering unexpected second chances.", detailedSummary:"Maggie's perfect Massachusetts lifestyle turns upside down when her husband's sudden death exposes layers of financial betrayal. Running away to coastal Captiva Island, she befriends Rose Johnson Lane, whose old family estate harbors decades of mystery. After Rose passes, Maggie inherits the run-down historic Key Lime Garden Inn, sparking a journey of architectural renovation, sisterhood, and the beautiful, hard-won courage required to start fresh and bloom after catastrophic losses.", musicUrl:"https://yukasatori-pixel.github.io/sound-test/The%20key%20lime%20garden%20inn.MP3", coverUrl:"https://yukasatori-pixel.github.io/sound-test/key%20lime%20garden%20inn.png" },
+      4:  { id:4,  title:'A Little Bit Of Sunshine',     author:'Nick Alexander',      summary:"Two sisters spend ten days on a remote Greek island, where blazing sun and old resentments crack open their glossy facades.", detailedSummary:"Dee lives a quiet, rainy life in Salford, completely contrasting her sister Trina's lavish champagne-fueled glamorous lifestyle. Under the blazing sun of a secluded Aegean paradise, long-simmering sibling rivalries and deep-seated envies start to boil. Facilitated by a handsome host and pressurized under the dry heat of Greece, the sisters must confront the painful personal truths, dark secrets, and high psychological costs of holding onto empty, competitive appearances.", musicUrl:"https://yukasatori-pixel.github.io/sound-test/A%20little%20bit%20of%20sunshine.MP3", coverUrl:"https://yukasatori-pixel.github.io/sound-test/A%20little%20bit%20of%20sunshine.png" },
+      5:  { id:5,  title:'Beginning to Live',            author:'Emmy van Deurzen',    summary:"A philosopher and therapist's guide to life's practical challenges, examining our experience across physical, social, personal, and spiritual dimensions.", detailedSummary:"Emmy van Deurzen offers an elegant blueprint for navigating existence by framing human struggle through the structured lens of existential philosophy. Instead of avoiding distress, readers are invited to embrace adversity as an active, beautiful challenge. By examining life's four key dimensions, the book provides useful frameworks to reclaim autonomy, reconstruct purpose, and perceive the future not as an unpredictable threat, but as a masterpiece in active development.", musicUrl:"https://yukasatori-pixel.github.io/sound-test/Beginning%20to%20live.MP3", coverUrl:"https://yukasatori-pixel.github.io/sound-test/beginning%20to%20live.png" },
+      6:  { id:6,  title:'Thirst',                       author:'John Robins',         summary:"Taskmaster champion and broadcaster John Robins chronicles his struggle with alcoholism and his moving journey toward clean sobriety with humor.", detailedSummary:"Written with painful, exquisite honesty, John Robins walks through his relationship with alcohol from his earliest adolescent drinks to his absolute bottom and eventual recovery in 2022. Balancing devastating truths of addiction with the dark humor of a master comedian, the narrative serves both as a warning beacon for those in similar struggles and a celebration of human resilience, self-forgiveness, and the healing clarity of a sober mind.", musicUrl:"https://yukasatori-pixel.github.io/sound-test/Thirst.MP3", coverUrl:"https://yukasatori-pixel.github.io/sound-test/Thirst.png" },
+      7:  { id:7,  title:'Land',                         author:"Maggie O'Farrell",    summary:"In 1865 Ireland, a father and son work on an ambitious Ordnance Survey mapping project, only to be redirected by an unsettling woodland encounter.", detailedSummary:"Tomas and his quiet, reluctant son Liam are tasked with precision mapping the Irish coastline when events take a strange spiritual turn. Deep within the ancient, windswept Irish peninsula, Maggie O'Farrell weaves a rich historical tapestry of buried family treasures, persistent spectral encounters, a remarkably loyal hound, and a lyrical meditation on how we claim land, draft borders, and realize that nothing in history truly stays buried.", musicUrl:"https://yukasatori-pixel.github.io/sound-test/Land.MP3", coverUrl:"https://yukasatori-pixel.github.io/sound-test/land.png" },
+      8:  { id:8,  title:'House of Earth and Blood',     author:'Sarah J. Maas',       summary:"A high-octane fantasy where half-fae Bryce Quinlan and fallen angel Hunt Athalar team up to solve a series of brutal murders shaking Lunathion.", detailedSummary:"Bryce Quinlan loved the party scenes of Crescent City until a demon massacre robbed her of her closest friends. Two years later, the killer strikes again, forcing her into an alliance with the enslaved, infamous assassin angel Hunt Athalar. Together, they plunge into the city's deepest criminal underworld, discovering terrifying conspiracies, forbidden magic, and ancient forces that threaten every citizen, all while fighting their own growing, explosive chemistry.", musicUrl:"https://yukasatori-pixel.github.io/sound-test/House%20of%20earth%20and%20blood.MP3", coverUrl:"https://yukasatori-pixel.github.io/sound-test/House%20of%20earth%20and%20blood.png" },
+      9:  { id:9,  title:'Binding 13',                   author:'Chloe Walsh',         summary:"An emotional, slow-burn Irish romance focusing on a star rugby player and a traumatized new student whose worlds collide mid-semester.", detailedSummary:"Johnny Kavanagh is a local celebrity at Tommen College, focused purely on reaching the rugby big leagues, despite a looming injury. Shannon Lynch is a quiet, bullied transfer student hoping to escape severe domestic trauma and panic issues. Drawn together through accidental encounters, they form a protective, deeply complicated bond. This heavy contemporary drama explores the long, hard road to healing, the power of young love, and the strength it takes to break toxic cycles.", musicUrl:"https://yukasatori-pixel.github.io/sound-test/Binding%2013.MP3", coverUrl:"https://yukasatori-pixel.github.io/sound-test/binding%2013.png" },
+      10: { id:10, title:'You Are Here',                 author:'David Nicholls',      summary:"Two lonely, driftless souls are brought together on an epic walk across the English countryside during persistent, gray rainfall.", detailedSummary:"Marnie is stuck in her solitary London flat, work-stressed and repeating identical days. Michael is coming undone, taking longer and longer solitary walks through nature to escape his broken marriage. When a mutual friend orchestrates a group hike, these two strangers find themselves walking side-by-side. Across moors and through driving storms, their shared physical struggle builds a quiet, humorous, and tender connection, proving that losing oneself is often the only way to be found.", musicUrl:"https://yukasatori-pixel.github.io/sound-test/You%20are%20here.MP3", coverUrl:"https://yukasatori-pixel.github.io/sound-test/You%20are%20here.png" },
+      11: { id:11, title:'Funny Story',                  author:'Emily Henry',         summary:"Daphne strikes up an unlikely roommate arrangement with her ex-fiance's new fiancee's ex-boyfriend Miles in a bid for self-preservation.", detailedSummary:"Left stranded in Michigan after Peter declares his love for childhood best friend Petra, library assistant Daphne finds herself stranded with the only person who can share her unique sorrow: Miles, Petra's chaotic ex. To survive, they agree to share an apartment, drawing strict lines. But when they decide to post fake photos to make their exes jealous, they embark on a summer of discovery that threatens to permanently rewrite Daphne's carefully plotted future chapters.", musicUrl:"https://yukasatori-pixel.github.io/sound-test/Funny%20story.MP3", coverUrl:"https://yukasatori-pixel.github.io/sound-test/funny%20story.png" },
+      12: { id:12, title:"The Violin Maker's Secret",    author:'Evie Woods',          summary:"Three complete strangers at Heathrow Airport are united by a rare, forgotten violin that alters the course of their lives.", detailedSummary:"Devlin is a baggage handler with a heavy heart. Walter is a retired history teacher missing his departed partner, and Gabrielle is a gifted instrument appraiser on the run from her past. When an exquisitely crafted 18th-century violin appears in the airport's unclaimed luggage, the trio is swept into a century-old mystery spanning war-torn Europe. To solve the secret of the instrument's hidden drawers, they must first find the courage to share their own deep-seated secrets and start living again.", musicUrl:"https://yukasatori-pixel.github.io/sound-test/The%20violin%20Maker's%20Secret.MP3", coverUrl:"https://yukasatori-pixel.github.io/sound-test/the%20violin%20maker's%20secret.png" },
+      13: { id:13, title:'Taming Mr. Walker',            author:'Rosa Lucas',          summary:"An intense, corporate romance between a quiet employee and her brother's powerful, arrogant tech tycoon best friend.", detailedSummary:"Danny Walker rejected my teenage advances flat out, leaving me embarrassed and distant. Eight years later, he buys out the massive tech firm where I work, making him the ultimate boss. Danny is hard-edged, calculated, and holds the room with cold command presence. But as our direct roles overlap, the freezing professional exterior begins to melt, exposing a fiery passion, long-concealed vulnerabilities, and an intense personal fire that has been burning for years.", musicUrl:"https://yukasatori-pixel.github.io/sound-test/Taming%20Mr.%20Walker.MP3", coverUrl:"https://yukasatori-pixel.github.io/sound-test/Taming%20mr%20walker.png" },
+      14: { id:14, title:'The Hand That First Held Mine',author:"Maggie O'Farrell",    summary:"Two passionate women living in Soho during the 1950s and modern London are bound across generations by a legacy of art, motherhood, and secrets.", detailedSummary:"Lexie Sinclair leaves rural Devon behind to find her fortune in London's bohemian mid-century Soho alongside the sophisticated Innes Kent. Fifty years later, Elina and Ted struggle to regain their grounding after the near-fatal birth of their first newborn. As Ted's childhood memories fragment and swirl, a web of coincidences pieces together a gorgeous, tear-jerking portrait showing how love, loss, and the indomitable female spirit can survive across generations.", musicUrl:"https://yukasatori-pixel.github.io/sound-test/The%20Hand%20That%20First%20Held%20Mine.MP3", coverUrl:"https://yukasatori-pixel.github.io/sound-test/the%20hand%20that%20first%20held%20mine.png" },
+      15: { id:15, title:'Project Hail Mary',            author:'Andy Weir',           summary:"A lone astronaut wakes up with severe amnesia on a desperate starship mission to save Earth from a solar-eating microbial disaster.", detailedSummary:"Ryland Grace is the sole survivor of a final, last-ditch global mission. As his memory slowly pieces back together, he realizes the magnitude of his task: finding a cure for the Astrophage heating up the Sun, with only two deceased crewmates for company. Plunged millions of miles into deep space, he is forced to rely on scientific deduction, creative physics, and a mind-blowing, heart-wrenching alliance with an extraordinary extraterrestrial engineer.", musicUrl:"https://yukasatori-pixel.github.io/sound-test/Project%20Hail%20Mary.MP3", coverUrl:"https://yukasatori-pixel.github.io/sound-test/project%20hail%20mary.png" },
+      16: { id:16, title:'Dear Debbie',                  author:'Freida McFadden',     summary:"A popular advice columnist decides it is finally time to seek hilarious, calculated payback on the personal family members ruining her life.", detailedSummary:"Debbie Mullen has spent decades handing out perfectly measured, calm advice to anxious suburban families. But when her own life collapses, losing her syndicated column, finding her teenage kids in trouble, and discovering her husband is hiding a secret bank account, she stops trying to be the bigger person. Following her own rules, we watch Debbie embark on a series of elaborate, delightfully dramatic vengeful schemes to reclaim her home and sanity.", musicUrl:"https://yukasatori-pixel.github.io/sound-test/Dear%20Debbie.MP3", coverUrl:"https://yukasatori-pixel.github.io/sound-test/dear%20debbie.png" },
+      17: { id:17, title:'When The Cranes Fly South',    author:'Lisa Ridzen',         summary:"An elderly Swedish farmer fights to keep his beloved dog and his dignity, even as his son pushes to place him in a care home.", detailedSummary:"Bo lives on his small, quiet ancestral farm in northern Sweden, assisted by an active local visiting nurse team. His days are kept bright by his loyal dog Sixten, calls with his oldest friend, and beautiful memories of his late wife. However, his son's increasing insistence on taking Sixten away for safety triggers a profound emotional awakening, leading Bo to mount a quiet, stubborn rebellion to preserve his way of life.", musicUrl:"https://yukasatori-pixel.github.io/sound-test/When%20the%20Cranes%20Fly%20South.MP3", coverUrl:"https://yukasatori-pixel.github.io/sound-test/When%20the%20Cranes%20Fly%20South.png" },
+      18: { id:18, title:'Broken Country',               author:'Clare Leslie Hall',   summary:"A high-stakes, lyrical thriller following a young woman viewing her first love stand trial for a shocking murder in an English village.", detailedSummary:"Beth first met Gabriel during a golden, intoxicating summer that redefined her artistic horizons. Ten years after his sudden, painful departure, Gabriel returns to their quiet village, upending the stable life Beth built for herself. Told through structural dual timelines, the dark suspense moves between that unforgettable first summer and the modern courtroom, building tension about what happened on the fateful night of the murder.", musicUrl:"https://yukasatori-pixel.github.io/sound-test/Broken%20country.MP3", coverUrl:"https://yukasatori-pixel.github.io/sound-test/broken%20country.png" },
+      19: { id:19, title:'Before the Coffee Gets Cold',  author:'Toshikazu Kawaguchi',summary:"In a quiet, subterranean Tokyo cafe, customers are offered the rare chance to travel back in time, but they must return before their coffee gets cold.", detailedSummary:"To travel back in time, visitors must sit in a specific, legendary chair and accept strict rules: they can only meet people who have visited the cafe, they cannot alter the present, and most importantly, they must drink all their coffee before it gets cold. These beautifully crafted stories follow several visitors seeking to resolve past departures, letters, and relationships, learning that while memory cannot modify the past, it remains a powerful guide for how they live tomorrow.", musicUrl:"https://yukasatori-pixel.github.io/sound-test/Before%20the%20cofee%20gets%20cold.MP3", coverUrl:"https://yukasatori-pixel.github.io/sound-test/before%20coffee%20gets%20cold.png" },
+      20: { id:20, title:'Normal People',                author:'Sally Rooney',        summary:"A poignant, razor-sharp dissection of class, intimacy, and the complicated bonds between two youths moving from school to university.", detailedSummary:"Connell is a popular rugby player whose mother works as a housekeeper for Marianne, a wealthy, deeply isolated loner. When they share a private conversation, they spark a secretive romantic connection that they hide from their school. As they shift to Trinity College Dublin, their social standings invert, but their mutual gravitational pull endures. Sally Rooney's masterpiece explores how one person can completely redefine another's life.", musicUrl:null, coverUrl:null },
+      21: { id:21, title:'The Dinner Party',             author:'Freida McFadden',     summary:"Desperate for rent money, a waitress accepts a highly paid, extremely suspicious shift at an isolated mansion on Peyton's Peak.", detailedSummary:"Eviction is only days away when a wealthy, eccentric friend offers the narrator double pay to waitress during an exclusive, highly private dinner party. Located in a sprawling, historic mountain estate where she has no cell coverage, the guests' bizarre social behaviors and the host's dark, locked doors trigger mounting paranoia. In a playful twist on classic thriller choices, the guide gives you direct power to choose your own path.", musicUrl:"https://yukasatori-pixel.github.io/sound-test/The%20dinner%20party.MP3", coverUrl:"https://yukasatori-pixel.github.io/sound-test/the%20dinner%20party.png" }
+    };
+
+    // Floor key convention:
+    //   'Top Floor'    = Trending & New Releases  (always first)
+    //   sub-genre floors in between
+    //   'Basement'     = Surprise & Deep Cuts      (always last)
+    var SPATIAL_METRIC_MAP = {
+      'North Wing (Fiction)': {
+        'Top Floor — Trending & New Releases':  [11, 2, 9, 20, 1],
+        'Fiction':                               [1, 10, 16, 19, 14],
+        'Sci-Fi & Fantasy':                      [15, 8, 7, 1, 19],
+        'Romance':                               [9, 11, 13, 3, 4],
+        'Crime, Mysteries & Thrillers':          [2, 18, 21, 16, 8],
+        'Arts & Entertainment':                  [12, 14, 19, 7, 1],
+        "Children's Books":                      [3, 10, 4, 19, 1],
+        'Basement — Surprise & Deep Cuts':       [14, 21, 12, 7, 17]
+      },
+      'South Wing (Lifestyle)': {
+        'Top Floor — Trending & New Releases':  [6, 5, 3, 4, 19],
+        'Home & Garden':                         [3, 4, 10, 19, 17],
+        'Health & Wellness':                     [5, 6, 17, 10, 19],
+        'Self Development & How To':             [5, 6, 19, 17, 1],
+        'Sports':                                [9, 6, 10, 17, 4],
+        'Travel & Holiday':                      [4, 3, 19, 10, 12],
+        'Basement — Surprise & Deep Cuts':       [19, 16, 14, 7, 21]
+      },
+      'West Wing (Science)': {
+        'Top Floor — Trending & New Releases':  [15, 8, 7, 5, 17],
+        'Science':                               [15, 7, 8, 5, 17],
+        'Computers & Technology':                [8, 15, 13, 5, 17],
+        'Business':                              [13, 17, 5, 16, 6],
+        'Finance':                               [16, 13, 5, 17, 6],
+        'Education & Learning':                  [5, 7, 17, 15, 19],
+        'Basement — Surprise & Deep Cuts':       [8, 15, 21, 18, 7]
+      },
+      'East Wing (Society)': {
+        'Top Floor — Trending & New Releases':  [20, 17, 6, 14, 7],
+        'History':                               [7, 17, 14, 20, 12],
+        'Biography':                             [6, 17, 14, 20, 10],
+        'Politics':                              [20, 17, 5, 7, 6],
+        'LGBTQ+':                                [10, 20, 9, 14, 11],
+        'Religion & Spirituality':               [19, 5, 7, 17, 14],
+        'Basement — Surprise & Deep Cuts':       [16, 21, 18, 12, 15]
+      }
+    };
+
+    // ── STATE ───────────────────────────────────────────────────────────────
+    var state = {
+      screen:'main_hall', currentWing:null, currentFloor:null,
+      currentBooks:[], currentIndex:0, bookId:null,
+      readBooks:[], favorites:[], history:[], showDetailed:false,
+      activeAudioBookId:null, audioState:'stopped'
+    };
+
+    // ── AUDIO (single persistent element, iOS-friendly) ───────────────────────
+    function getAudioEl(){ return document.getElementById('book-audio'); }
+
+    function stopAudio(){
+      var el = getAudioEl();
+      if (el) { try { el.pause(); } catch(e){} }
+      state.activeAudioBookId = null;
+      state.audioState = 'stopped';
+    }
+
+    function toggleBookAudio(bookId){
+      if (state.activeAudioBookId === bookId && state.audioState !== 'stopped'){
+        stopAudio(); announce('Audio stopped.'); render(); return;
+      }
+      stopAudio();
+      var book = BOOKS[bookId];
+      if (!book) return;
+      if (!book.musicUrl){ announce('No audio is available for ' + book.title + '.'); return; }
+
+      var el = getAudioEl();
+      if (!el) return;
+
+      state.activeAudioBookId = bookId;
+      state.audioState = 'loading';
+      render();
+      announce('Loading audio for ' + book.title + '. Please wait a moment.');
+
+      var announced = false;
+      el.onplaying = function(){
+        if (announced || state.activeAudioBookId !== bookId) return;
+        announced = true;
+        state.audioState = 'playing';
+        render();
+        announce('Now playing music for ' + book.title + '.');
+      };
+      el.onerror = function(){
+        if (state.activeAudioBookId !== bookId) return;
+        stopAudio(); render();
+        announce('Sorry, the audio for ' + book.title + ' could not be played.');
+      };
+
+      el.volume = 0.85;
+      el.src = book.musicUrl;
+      el.load();
+      var p = el.play();
+      if (p && typeof p.catch === 'function'){
+        p.catch(function(){
+          if (state.activeAudioBookId !== bookId) return;
+          stopAudio(); render();
+          announce('Sorry, the audio for ' + book.title + ' could not be played.');
+        });
+      }
+    }
+
+    // ── ACCESSIBILITY ────────────────────────────────────────────────────────
+    function announce(msg){
+      var el = document.getElementById('accessibility-announcer');
+      if (!el) return;
+      el.textContent = '';
+      setTimeout(function(){ el.textContent = msg; }, 50);
+    }
+    function focusStage(){
+      var heading = document.querySelector('#dynamic-stage h2');
+      var target = heading || document.getElementById('dynamic-stage');
+      if (target){
+        if (target.id !== 'dynamic-stage' && !target.hasAttribute('tabindex')) target.setAttribute('tabindex','-1');
+        try { target.focus(); } catch(e){}
+      }
+    }
+
+    // ── HISTORY ──────────────────────────────────────────────────────────────
+    function pushHistory(){
+      state.history.push({
+        screen:state.screen, currentWing:state.currentWing, currentFloor:state.currentFloor,
+        currentBooks:state.currentBooks.slice(), currentIndex:state.currentIndex, bookId:state.bookId
+      });
+    }
+    function initHistory(){
+      state.history = [{ screen:'main_hall', currentWing:null, currentFloor:null, currentBooks:[], currentIndex:0, bookId:null }];
+    }
+
+    // ── NAVIGATION ───────────────────────────────────────────────────────────
+    function selectWing(wingName){
+      stopAudio();
+      state.screen='floor_select'; state.currentWing=wingName; state.currentFloor=null;
+      state.currentBooks=[]; state.currentIndex=0; state.bookId=null;
+      pushHistory(); render();
+      announce('You entered the ' + wingName + '. Choose a floor: Top Floor for Trending and New Releases, Middle Floor for Standard Catalog, or Basement for Surprise and Deep Cuts.');
+      focusStage();
+    }
+    function selectFloor(floorName){
+      stopAudio();
+      var booksList = (SPATIAL_METRIC_MAP[state.currentWing] || {})[floorName] || [];
+      state.screen='corridor'; state.currentFloor=floorName; state.currentBooks=booksList;
+      state.currentIndex=0; state.bookId=null;
+      pushHistory(); render();
+      var first = booksList[0] ? BOOKS[booksList[0]] : null;
+      announce('Entered ' + floorName + ' of ' + state.currentWing + '. ' + booksList.length + ' doors on this floor.' + (first ? ' First door: ' + first.title + ' by ' + first.author + '.' : ''));
+      focusStage();
+    }
+    function skipDoor(){
+      stopAudio();
+      var nextIndex = state.currentIndex + 1;
+      if (nextIndex >= state.currentBooks.length){
+        state.screen='end_corridor'; pushHistory(); render();
+        announce('You have reached the end of this corridor.');
+      } else {
+        state.currentIndex = nextIndex; pushHistory(); render();
+        var book = BOOKS[state.currentBooks[state.currentIndex]];
+        announce('Door ' + (state.currentIndex + 1) + ' of ' + state.currentBooks.length + '. ' + (book ? book.title + ' by ' + book.author : '') + '.');
+      }
+      focusStage();
+    }
+    function knockDoor(id){
+      stopAudio();
+      if (state.readBooks.indexOf(id) === -1) state.readBooks.push(id);
+      state.screen='room'; state.bookId=id; state.showDetailed=false;
+      pushHistory(); render();
+      var b = BOOKS[id];
+      announce('Opened the door details for ' + (b ? b.title + ' by ' + b.author : 'unknown') + '.');
+      focusStage();
+    }
+    function returnToCorridor(){
+      stopAudio();
+      state.screen='corridor'; state.bookId=null; pushHistory(); render();
+      announce('Returned to the corridor.'); focusStage();
+    }
+    function goThrough(id){
+      stopAudio();
+      state.screen='through'; state.bookId=id; pushHistory(); render();
+      announce('Three related paths appear: Readers also viewed, More in this style, and Related works.');
+      focusStage();
+    }
+    function branchToCorridor(categoryName){
+      stopAudio();
+      var lists = { Similar:[2,21,11,9,20], Style:[14,7,16,21,19], Related:[15,8,5,6,18] };
+      var booksList = lists[categoryName] || [];
+      state.screen='corridor'; state.currentWing='Related Doors'; state.currentFloor=categoryName;
+      state.currentBooks=booksList; state.currentIndex=0; state.bookId=null;
+      pushHistory(); render();
+      var first = BOOKS[booksList[0]];
+      announce('Now in the ' + categoryName + ' path. ' + booksList.length + ' doors.' + (first ? ' First: ' + first.title : '') + '.');
+      focusStage();
+    }
+
+    // ── FAVORITES / ACTIONS ───────────────────────────────────────────────────
+    function toggleFavorite(bookId){
+      var idx = state.favorites.indexOf(bookId);
+      if (idx > -1){ state.favorites.splice(idx,1); announce('Removed ' + (BOOKS[bookId]?BOOKS[bookId].title:'') + ' from favorites.'); }
+      else { state.favorites.push(bookId); announce('Added ' + (BOOKS[bookId]?BOOKS[bookId].title:'') + ' to favorites.'); }
+      render();
+    }
+    function startReading(bookId){ announce('Enjoy reading ' + (BOOKS[bookId]?BOOKS[bookId].title:'') + '.'); }
+    function exploreRandom(){
+      var wings = Object.keys(SPATIAL_METRIC_MAP);
+      var randomWing = wings[Math.floor(Math.random()*wings.length)];
+      var floors = Object.keys(SPATIAL_METRIC_MAP[randomWing]);
+      var randomFloor = floors[Math.floor(Math.random()*floors.length)];
+      state.currentWing = randomWing; selectFloor(randomFloor);
+    }
+
+    // ── TRAVEL MODAL ──────────────────────────────────────────────────────────
+    var lastFocusedBeforeModal = null;
+    function openTravelMenu(){
+      lastFocusedBeforeModal = document.activeElement;
+      document.getElementById('travel-modal-backdrop').classList.remove('hidden');
+      var backBtn = document.getElementById('btn-travel-back');
+      if (state.history.length <= 1) backBtn.setAttribute('disabled','true'); else backBtn.removeAttribute('disabled');
+      var beginBtn = document.getElementById('btn-travel-beginning');
+      var inCorridor = state.screen==='corridor' || state.screen==='room' || state.screen==='end_corridor';
+      if (!inCorridor) beginBtn.setAttribute('disabled','true'); else beginBtn.removeAttribute('disabled');
+      announce('Travel Options Menu opened.');
+      var firstEnabled = backBtn.hasAttribute('disabled')
+        ? (beginBtn.hasAttribute('disabled') ? document.querySelector('#travel-modal-backdrop button:not([disabled])') : beginBtn)
+        : backBtn;
+      if (firstEnabled){ try { firstEnabled.focus(); } catch(e){} }
+    }
+    function closeTravelMenu(){
+      document.getElementById('travel-modal-backdrop').classList.add('hidden');
+      if (lastFocusedBeforeModal){ try { lastFocusedBeforeModal.focus(); } catch(e){} }
+    }
+    function travelBack(){
+      stopAudio();
+      if (state.history.length > 1){
+        state.history.pop();
+        var prev = state.history[state.history.length - 1];
+        state.screen=prev.screen; state.currentWing=prev.currentWing; state.currentFloor=prev.currentFloor;
+        state.currentBooks=prev.currentBooks.slice(); state.currentIndex=prev.currentIndex; state.bookId=prev.bookId;
+        closeTravelMenu(); render(); announce('Returned to previous location.'); focusStage();
+      }
+    }
+    function travelBeginning(){
+      stopAudio();
+      var inCorridor = state.screen==='corridor' || state.screen==='room' || state.screen==='end_corridor';
+      if (inCorridor){
+        state.currentIndex=0; state.bookId=null; state.screen='corridor';
+        pushHistory(); closeTravelMenu(); render();
+        var first = BOOKS[state.currentBooks[0]];
+        announce('Returned to start of corridor. First door: ' + (first ? first.title : '') + '.');
+        focusStage();
+      }
+    }
+    function travelMainHall(){
+      stopAudio();
+      state.screen='main_hall'; state.currentWing=null; state.currentFloor=null;
+      state.currentBooks=[]; state.currentIndex=0; state.bookId=null;
+      initHistory(); closeTravelMenu(); render();
+      announce('Returned to the Main Hall. Choose any of the 4 wings to explore.');
+      focusStage();
+    }
+
+    // ── ACCORDION ─────────────────────────────────────────────────────────────
+    function toggleDetailedAccordion(){
+      state.showDetailed = !state.showDetailed; render();
+      announce(state.showDetailed ? 'Detailed summary expanded.' : 'Detailed summary collapsed.');
+    }
+
+    // ── HELPERS ───────────────────────────────────────────────────────────────
+    function esc(str){
+      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+
+    // ── RENDER ────────────────────────────────────────────────────────────────
+    function render(){
+      var stage = document.getElementById('dynamic-stage');
+      if (!stage) return;
+      var html = '';
+
+      if (state.screen === 'main_hall'){
+        var wings = [
+          ['North Wing (Fiction)','North Wing','Fiction'],
+          ['South Wing (Lifestyle)','South Wing','Lifestyle'],
+          ['West Wing (Science)','West Wing','Science'],
+          ['East Wing (Society)','East Wing','Society']
+        ];
+        // compass order: North, West, East, South  →  position classes
+        var compassOrder = [
+          ['North Wing (Fiction)',   'North Wing', 'Fiction',   'tile-north'],
+          ['West Wing (Science)',    'West Wing',  'Science',   'tile-west'],
+          ['East Wing (Society)',    'East Wing',  'Society',   'tile-east'],
+          ['South Wing (Lifestyle)','South Wing',  'Lifestyle', 'tile-south']
+        ];
+        html = '<h2 class="section-heading">Main Hall: choose a wing</h2>' +
+          '<div class="compass-grid">' +
+          compassOrder.map(function(w){
+            return '<button class="tile ' + w[3] + '" onclick="selectWing(\'' + esc(w[0]) + '\')" aria-label="' + esc(w[1] + ', ' + w[2]) + '">' +
+              esc(w[2]) + '<span class="tile-sub">' + esc(w[1]) + '</span></button>';
+          }).join('') + '</div>';
+
+      } else if (state.screen === 'floor_select'){
+        var floors = Object.keys(SPATIAL_METRIC_MAP[state.currentWing] || {});
+        html = '<h2 class="section-heading">' + esc(state.currentWing) + '</h2>' +
+          '<div class="stack">' +
+          floors.map(function(f){
+            var isTop      = f.indexOf('Top Floor') === 0;
+            var isBasement = f.indexOf('Basement') === 0;
+            var cls = (isTop || isBasement) ? ' class="primary"' : '';
+            return '<button' + cls + ' onclick="selectFloor(\'' + esc(f) + '\')">' + esc(f) + '</button>';
+          }).join('') +
+          '</div>';
+
+      } else if (state.screen === 'corridor'){
+        var bookId = state.currentBooks[state.currentIndex];
+        var book = BOOKS[bookId];
+        var isCurrent = state.activeAudioBookId === bookId;
+        var isPlaying = isCurrent && state.audioState === 'playing';
+        var isLoading = isCurrent && state.audioState === 'loading';
+        var hasAudio = !!(book && book.musicUrl);
+        var audioAriaLabel = !hasAudio ? 'No audio available for this door'
+          : isLoading ? 'Loading audio, please wait'
+          : isPlaying ? 'Stop audio for this door' : 'Play audio for this door';
+
+        // Play icon (triangle) or Stop icon (square)
+        var playIconSvg = isPlaying
+          ? '<svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="4" width="5" height="14" rx="1" fill="black"/><rect x="13" y="4" width="5" height="14" rx="1" fill="black"/></svg>'
+          : '<svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><polygon points="5,3 19,11 5,19" fill="black"/></svg>';
+
+        // Skip icon (double triangle)
+        var skipIconSvg = '<svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><polygon points="2,3 12,11 2,19" fill="black"/><polygon points="10,3 20,11 10,19" fill="black"/></svg>';
+
+        // Update bottom bar location label
+        updateLocationLabel();
+
+        html = '<h2 class="sr-only">Door ' + (state.currentIndex + 1) + ' of ' + state.currentBooks.length + '</h2>' +
+          '<div class="door-card">' +
+          (book.coverUrl ? '<div class="door-cover" aria-hidden="true" style="background-image:url(' + esc(book.coverUrl) + ')"></div>' : '') +
+          '<div class="door-title-block">' +
+          '<h2>' + esc(book.title) + '</h2>' +
+          '<p class="author">by ' + esc(book.author) + '</p>' +
+          '</div>' +
+          '<div class="door-controls">' +
+          '<button class="icon-btn" onclick="toggleBookAudio(' + bookId + ')" aria-label="' + esc(audioAriaLabel) + '" aria-pressed="' + isPlaying + '"' + (hasAudio ? '' : ' disabled') + '>' + playIconSvg + '</button>' +
+          '<button class="doorknob-btn" onclick="knockDoor(' + bookId + ')" aria-label="Open this door to view details"></button>' +
+          '<button class="icon-btn" onclick="skipDoor()" aria-label="Skip to next door">' + skipIconSvg + '</button>' +
+          '</div>' +
+          '</div>';
+
+      } else if (state.screen === 'room'){
+        var rid = state.bookId;
+        var rbook = BOOKS[rid];
+        var isFav = state.favorites.indexOf(rid) > -1;
+        var favLabel = isFav ? 'Remove from favorites' : 'Add to favorites';
+        html =
+          // Book header
+          '<h2 class="section-heading sr-only">Door details</h2>' +
+          '<div class="book-card">' +
+          '<p class="label">Now viewing</p>' +
+          '<h2 style="font-size:22px;">' + esc(rbook.title) + '</h2>' +
+          '<p class="author">by ' + esc(rbook.author) + '</p>' +
+          '</div>' +
+
+          // Short summary
+          '<section class="room-section" style="border-top:none;padding-top:0;margin-top:0;">' +
+          '<h3 class="room-heading">Short summary</h3>' +
+          '<p class="summary">' + esc(rbook.summary) + '</p>' +
+          '</section>' +
+
+          // Detailed summary
+          '<section class="room-section">' +
+          '<div class="row">' +
+          '<h3 class="room-heading" style="margin:0;">Detailed summary</h3>' +
+          '<button onclick="toggleDetailedAccordion()" aria-expanded="' + state.showDetailed + '" style="width:auto;font-size:14px;padding:8px 14px;">' +
+          (state.showDetailed ? 'Hide' : 'Show') + '</button>' +
+          '</div>' +
+          (state.showDetailed
+            ? '<div class="detail-box">' + esc(rbook.detailedSummary) + '</div>'
+            : '<p style="font-size:14px;color:var(--muted);margin:0;">Press Show to read more.</p>') +
+          '</section>' +
+
+          // Actions (3 square buttons)
+          '<section class="room-section" aria-label="Actions section">' +
+          '<h3 class="room-heading" aria-label="Actions, 3 actions below">Actions</h3>' +
+          '<div class="action-row">' +
+          '<button onclick="startReading(' + rid + ')" aria-label="Start reading">Start reading</button>' +
+          '<button onclick="toggleFavorite(' + rid + ')" aria-pressed="' + isFav + '" aria-label="' + esc(favLabel) + '">' + esc(favLabel) + '</button>' +
+          '<button onclick="openFeedback(' + rid + ')" aria-label="Give feedback on music">Give feedback on music</button>' +
+          '</div>' +
+          '</section>' +
+
+          // Path (2 buttons)
+          '<section class="room-section">' +
+          '<h3 class="room-heading">Path</h3>' +
+          '<div class="path-row">' +
+          '<button onclick="goThrough(' + rid + ')" aria-label="Find related doors">Find related doors</button>' +
+          '<button onclick="returnToCorridor()" aria-label="Return to corridor">Return to corridor</button>' +
+          '</div>' +
+          '</section>';
+
+      } else if (state.screen === 'through'){
+        // 3 doors: front = Similar, left = Style, right = Related
+        html = '<h2 class="section-heading">Choose a related door</h2>' +
+          '<div class="through-space">' +
+          // Front door
+          '<button class="through-door through-door-front" onclick="branchToCorridor(\'Similar\')" aria-label="Front door: Readers also viewed">' +
+          '<span class="door-direction">Ahead</span>' +
+          'Readers also viewed' +
+          '<span class="door-knob" aria-hidden="true"></span>' +
+          '</button>' +
+          '<button class="through-door through-door-left" onclick="branchToCorridor(\'Style\')" aria-label="Left door: More in this style">' +
+          '<span class="door-direction">Left</span>' +
+          'More in this style' +
+          '<span class="door-knob" aria-hidden="true"></span>' +
+          '</button>' +
+          '<button class="through-door through-door-right" onclick="branchToCorridor(\'Related\')" aria-label="Right door: Related works">' +
+          '<span class="door-direction">Right</span>' +
+          'Related works' +
+          '<span class="door-knob" aria-hidden="true"></span>' +
+          '</button>' +
+          '</div>';
+
+      } else if (state.screen === 'crumble'){
+        var crumbleIds = state.readBooks.slice().reverse(); // most recent first
+        if (crumbleIds.length === 0) {
+          html = '<h2 class="section-heading">Crumble path</h2>' +
+            '<p class="summary">You have not viewed any doors yet. Explore the library first.</p>';
+        } else {
+          html = '<h2 class="section-heading">Crumble path</h2>' +
+            '<p style="font-size:14px;color:var(--muted);margin:0 0 14px;">Books you have viewed — most recent first. Tap to return to that door.</p>' +
+            '<div class="crumble-list">' +
+            crumbleIds.map(function(id){
+              var b = BOOKS[id];
+              if (!b) return '';
+              return '<button class="crumble-item" onclick="returnToDoor(' + id + ')" aria-label="Return to ' + esc(b.title) + ' by ' + esc(b.author) + '">' +
+                '<div>' + esc(b.title) + '</div>' +
+                '<div class="crumble-author">by ' + esc(b.author) + '</div>' +
+                '</button>';
+            }).join('') +
+            '</div>';
+        }
+
+      } else if (state.screen === 'end_corridor'){
+        html = '<h2 class="section-heading">End of corridor</h2>' +
+          '<p class="summary">You have browsed every door on this path. Return to the Main Hall or explore a random corridor.</p>' +
+          '<div class="stack">' +
+          '<button class="primary" onclick="travelMainHall()">Return to Main Hall</button>' +
+          '<button onclick="exploreRandom()">Explore a random corridor</button>' +
+          '</div>';
+      }
+
+      stage.innerHTML = html;
+      updateLocationLabel();
+    }
+
+    // ── TOAST ─────────────────────────────────────────────────────────────────────
+    var _toastTimer = null;
+    function showToast(msg) {
+      var el = document.getElementById('toast');
+      if (!el) return;
+      el.textContent = msg;
+      el.classList.add('visible');
+      clearTimeout(_toastTimer);
+      _toastTimer = setTimeout(function(){ el.classList.remove('visible'); }, 4000);
+      announce(msg);
+    }
+
+    // ── CRUMBLE PATH ──────────────────────────────────────────────────────────────
+    function openCrumblePath(){
+      stopAudio();
+      state.screen = 'crumble';
+      pushHistory();
+      closeTravelMenu();
+      render();
+      announce('Crumble path. ' + state.readBooks.length + ' books viewed. Most recent first.');
+      focusStage();
+    }
+
+    function returnToDoor(bookId){
+      stopAudio();
+      // Open the room for that book without needing to find it in a corridor
+      if (state.readBooks.indexOf(bookId) === -1) state.readBooks.push(bookId);
+      state.screen = 'room';
+      state.bookId = bookId;
+      state.showDetailed = false;
+      pushHistory();
+      render();
+      var b = BOOKS[bookId];
+      announce('Returned to ' + (b ? b.title + ' by ' + b.author : 'book') + '.');
+      focusStage();
+    }
+
+    // ── FEEDBACK DRAWER ──────────────────────────────────────────────────────────
+    var _feedbackBookId = null;
+    var _feedbackScore  = null;
+
+    function openFeedback(bookId) {
+      _feedbackBookId = bookId;
+      _feedbackScore  = null;
+
+      // Build scale buttons 1–10
+      var row = document.getElementById('scale-row');
+      if (row) {
+        row.innerHTML = '';
+        for (var i = 1; i <= 10; i++) {
+          (function(n){
+            var btn = document.createElement('button');
+            btn.textContent = n;
+            btn.setAttribute('aria-label', n + ' out of 10');
+            btn.setAttribute('aria-pressed', 'false');
+            btn.onclick = function() {
+              _feedbackScore = n;
+              var all = row.querySelectorAll('button');
+              all.forEach(function(b){ b.classList.remove('selected'); b.setAttribute('aria-pressed','false'); });
+              btn.classList.add('selected');
+              btn.setAttribute('aria-pressed', 'true');
+            };
+            row.appendChild(btn);
+          })(i);
+        }
+      }
+
+      // Reset fields
+      var cb = document.getElementById('fb-read-check');
+      if (cb) cb.checked = false;
+      var ta = document.getElementById('fb-comment');
+      if (ta) ta.value = '';
+
+      var drawer = document.getElementById('feedback-drawer');
+      if (drawer) {
+        drawer.classList.add('open');
+        drawer.setAttribute('aria-hidden', 'false');
+        announce('Feedback panel opened. Rate the music atmosphere match from 1 to 10.');
+        // Focus first scale button
+        var first = drawer.querySelector('.scale-row button');
+        if (first) setTimeout(function(){ try { first.focus(); } catch(e){} }, 100);
+      }
+    }
+
+    function closeFeedback() {
+      var drawer = document.getElementById('feedback-drawer');
+      if (drawer) {
+        drawer.classList.remove('open');
+        drawer.setAttribute('aria-hidden', 'true');
+        announce('Feedback panel closed.');
+      }
+    }
+
+    function submitFeedback() {
+      closeFeedback();
+      showToast('Thank you for your feedback! Your opinion helps improve the system.');
+    }
+
+    function flagMusic() {
+      closeFeedback();
+      showToast('Thank you for your report. We will review this music.');
+    }
+
+    // ── LOCATION LABEL ──────────────────────────────────────────────────────────
+    function updateLocationLabel(){
+      var el = document.getElementById('location-label');
+      if (!el) return;
+      var parts = [];
+      if (state.currentWing) parts.push(state.currentWing);
+      if (state.currentFloor) parts.push(state.currentFloor);
+      el.textContent = parts.join(' — ');
+      // Update aria-label on the button too
+      // current-location-display is now a div (not a button), no aria-label needed
+    }
+    function openCurrentLocation(){
+      var parts = [];
+      if (state.currentWing) parts.push(state.currentWing);
+      if (state.currentFloor) parts.push(state.currentFloor);
+      announce('Current location: ' + (parts.join(', ') || 'Main Hall'));
+    }
+
+    // ── EXPOSE handlers used by inline onclick ────────────────────────────────
+    window.openCrumblePath = openCrumblePath;
+    window.returnToDoor    = returnToDoor;
+    window.openFeedback   = openFeedback;
+    window.closeFeedback  = closeFeedback;
+    window.submitFeedback = submitFeedback;
+    window.flagMusic      = flagMusic;
+    window.updateLocationLabel = updateLocationLabel;
+    window.selectWing = selectWing;
+    window.selectFloor = selectFloor;
+    window.skipDoor = skipDoor;
+    window.knockDoor = knockDoor;
+    window.returnToCorridor = returnToCorridor;
+    window.goThrough = goThrough;
+    window.branchToCorridor = branchToCorridor;
+    window.toggleFavorite = toggleFavorite;
+    window.startReading = startReading;
+    window.exploreRandom = exploreRandom;
+    window.toggleBookAudio = toggleBookAudio;
+    window.toggleDetailedAccordion = toggleDetailedAccordion;
+    window.openTravelMenu = openTravelMenu;
+    window.closeTravelMenu = closeTravelMenu;
+    window.travelBack = travelBack;
+    window.travelBeginning = travelBeginning;
+    window.travelMainHall = travelMainHall;
+
+    // ── KEYBOARD: close modal on Escape ───────────────────────────────────────
+    document.addEventListener('keydown', function(e){
+      if (e.key === 'Escape'){
+        var modal = document.getElementById('travel-modal-backdrop');
+        if (modal && !modal.classList.contains('hidden')) { closeTravelMenu(); return; }
+        var drawer = document.getElementById('feedback-drawer');
+        if (drawer && drawer.classList.contains('open')) { closeFeedback(); return; }
+      }
+    });
+
+    // ── SWIPE LEFT → next door (non-VoiceOver) ───────────────────────────────
+    // Tracks a single touch; left-swipe of 50px+ on corridor screen = skipDoor()
+    var _swipeStartX = null;
+    var _swipeStartY = null;
+    document.addEventListener('touchstart', function(e){
+      if (state.screen !== 'corridor') return;
+      var t = e.touches[0];
+      _swipeStartX = t.clientX;
+      _swipeStartY = t.clientY;
+    }, { passive: true });
+
+    document.addEventListener('touchend', function(e){
+      if (state.screen !== 'corridor') return;
+      if (_swipeStartX === null) return;
+      var t = e.changedTouches[0];
+      var dx = t.clientX - _swipeStartX;
+      var dy = t.clientY - _swipeStartY;
+      _swipeStartX = null;
+      _swipeStartY = null;
+      // Must be more horizontal than vertical, and at least 50px left
+      if (Math.abs(dx) < 50) return;
+      if (Math.abs(dy) > Math.abs(dx)) return;
+      if (dx < 0) {
+        skipDoor();   // left swipe → next door
+      }
+    }, { passive: true });
+
+    // ── VOICEOVER SCROLL → next door ────────────────────────────────────────────
+    var _voScrollTimer = null;
+    window.addEventListener('scroll', function(){
+      if (state.screen !== 'corridor') return;
+      clearTimeout(_voScrollTimer);
+      _voScrollTimer = setTimeout(function(){
+        skipDoor();
+        window.scrollTo(0, 0);
+      }, 80);
+    }, { passive: true });
+
+    // ── TWO-FINGER SWIPE: VoiceOver next/prev page ───────────────────────────────
+    // VoiceOver intercepts single-finger gestures, but two-finger swipe
+    // (used as "scroll page") is detectable via touch events.
+    // Left = next door, Right = go back (travelBack).
+    var _vo2StartX = null;
+    document.addEventListener('touchstart', function(e){
+      if (e.touches.length === 2){
+        _vo2StartX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      }
+    }, { passive: true });
+    document.addEventListener('touchend', function(e){
+      if (_vo2StartX === null) return;
+      var endX = e.changedTouches[0] ? e.changedTouches[0].clientX : _vo2StartX;
+      var dx = endX - _vo2StartX;
+      _vo2StartX = null;
+      if (Math.abs(dx) < 40) return;
+      if (dx < 0){
+        // Two-finger left → next door
+        if (state.screen === 'corridor') skipDoor();
+      } else {
+        // Two-finger right → back
+        travelBack();
+      }
+    }, { passive: true });
+
+    // ── BOOT (runs immediately; script is at end of body) ─────────────────────
+    try {
+      initHistory();
+      render();
+      var guideKey = 'spatial_guide_seen';
+      var seen = false;
+      try { seen = !!localStorage.getItem(guideKey); } catch(e){}
+      if (!seen){
+        announce('Welcome to the Digital Library. You are in the Main Hall. Four wings surround you: North Wing for Fiction, South Wing for Lifestyle, West Wing for Science, and East Wing for Society. Select a wing to begin.');
+        try { localStorage.setItem(guideKey,'true'); } catch(e){}
+      } else {
+        announce('You are in the Main Hall. Choose any of the 4 wings to explore.');
+      }
+    } catch (err) {
+      showFatal(err && err.message ? err.message : String(err));
+    }
+  })();
+  </script>
+  <!-- Toast notification -->
+  <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Music feedback drawer -->
+  <div id="feedback-drawer" class="feedback-drawer" role="dialog" aria-modal="true" aria-label="Give feedback on music" aria-hidden="true">
+    <h2>Feedback on music</h2>
+
+    <div class="feedback-field">
+      <label id="scale-label">How well does the music match this book's atmosphere? (1–10)</label>
+      <div class="scale-row" role="group" aria-labelledby="scale-label" id="scale-row"></div>
+    </div>
+
+    <div class="feedback-field">
+      <label>
+        <div class="check-row">
+          <input type="checkbox" id="fb-read-check" />
+          <span>I have read this book</span>
+        </div>
+      </label>
+    </div>
+
+    <div class="feedback-field">
+      <label for="fb-comment">Comment (optional)</label>
+      <textarea class="feedback-text" id="fb-comment" placeholder="Share your thoughts…" aria-label="Comment on the music"></textarea>
+    </div>
+
+    <div class="feedback-actions">
+      <button class="primary" onclick="submitFeedback()" aria-label="Submit feedback">Submit</button>
+      <button onclick="closeFeedback()" aria-label="Close feedback panel">Close</button>
+    </div>
+
+    <div class="flag-row">
+      <button class="flag-btn" onclick="flagMusic()" aria-label="Flag this music as inappropriate">
+        Flag music as inappropriate
+      </button>
+    </div>
+  </div>
+
+</body>
+</html>
