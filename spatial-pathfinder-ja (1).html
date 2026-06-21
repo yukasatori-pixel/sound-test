@@ -1,0 +1,1249 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>デジタル図書館 - スペーシャル・パスファインダー</title>
+  <style>
+    :root {
+      --bg:#070706; --fg:#fafaf8; --muted:#8a8782; --border:#2a2826;
+      --surface:#0f0e0c; --accent:#fafaf8; --accent-fg:#070706; --focus:#c98a4a;
+      --warm:#c98a4a; --warm-dim:#7a5530;
+    }
+    * { box-sizing:border-box; }
+    html, body {
+      margin:0; padding:0; background:var(--bg); color:var(--fg);
+      font-family:-apple-system, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      font-size:18px; line-height:1.55; letter-spacing:.001em;
+      -webkit-font-smoothing:antialiased;
+    }
+    body { padding:40px 20px 64px; max-width:720px; margin:0 auto; }
+
+    .sr-only {
+      position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+      overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
+    }
+    a.skip-link {
+      position:absolute; left:-999px; top:0;
+      background:var(--fg); color:var(--bg); padding:8px 12px; z-index:100;
+    }
+    a.skip-link:focus { left:8px; top:8px; }
+
+    h2.section-heading {
+      font-size:20px; font-weight:600; letter-spacing:-.01em; margin:0 0 22px;
+      font-stretch:95%;
+    }
+    h3.sub-heading {
+      font-size:13px; font-weight:600; text-transform:uppercase;
+      letter-spacing:.1em; margin:0 0 8px; color:var(--muted);
+    }
+    .stack { display:flex; flex-direction:column; gap:14px; }
+    /* compass layout: North top-center, West/East middle, South bottom-center */
+    .compass-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-rows: auto auto auto;
+      gap: 14px;
+    }
+    .compass-grid .tile-north { grid-column: 2; grid-row: 1; }
+    .compass-grid .tile-west  { grid-column: 1; grid-row: 2; }
+    .compass-grid .tile-east  { grid-column: 3; grid-row: 2; }
+    .compass-grid .tile-south { grid-column: 2; grid-row: 3; }
+    .compass-grid .tile-north { border-bottom: 2px solid #a8654a; }
+    .compass-grid .tile-west  { border-bottom: 2px solid #5470a8; }
+    .compass-grid .tile-east  { border-bottom: 2px solid #b08a4a; }
+    .compass-grid .tile-south { border-bottom: 2px solid #5f7a5a; }
+
+    button {
+      font-family:-apple-system, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      font-size:17px; color:var(--fg);
+      background:var(--surface); border:1px solid var(--border); padding:16px 18px;
+      text-align:left; cursor:pointer; width:100%; line-height:1.4;
+      transition:background .15s ease, border-color .15s ease, transform .1s ease;
+    }
+    button:hover { background:#171513; border-color:#454039; }
+    button:active { transform: scale(0.99); }
+    button:focus-visible, button:focus { outline:2px solid var(--focus); outline-offset:2px; }
+    button[disabled] { opacity:.35; cursor:not-allowed; }
+
+    button.tile {
+      aspect-ratio:1/1; display:flex; flex-direction:column;
+      align-items:flex-start; justify-content:flex-end; padding:20px;
+      font-size:18px; font-weight:600;
+      border-color: var(--border);
+    }
+    button.tile:hover { border-color: var(--warm-dim); }
+    button.tile .tile-sub {
+      display:block; font-size:11px; font-weight:500; text-transform:uppercase;
+      letter-spacing:.1em; color:var(--muted); margin-top:6px;
+    }
+    @media (max-width:480px){ button.tile { aspect-ratio:auto; min-height:96px; } }
+
+    button.primary {
+      background:var(--accent); color:var(--accent-fg); border-color:var(--accent);
+      text-align:center; font-weight:600;
+    }
+    button.primary:hover { background:#e8d9c4; border-color:#e8d9c4; }
+    button.center { text-align:center; }
+
+    .btn-sub { display:block; font-size:13px; color:var(--muted); margin-top:4px; }
+    button.primary .btn-sub { color:#4a4030; }
+
+    .book-card { border:1px solid var(--border); background:var(--surface); padding:18px; margin-bottom:18px; }
+    .book-card .label { font-size:11px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); margin:0 0 6px; }
+    .book-card h2 { font-size:22px; margin:0 0 4px; font-weight:600; letter-spacing:-.01em; }
+    .book-card .author { font-size:15px; color:var(--muted); margin:0; }
+
+    p.summary { font-size:17px; margin:0 0 18px; }
+    .detail-box { border:1px solid var(--border); background:var(--surface); padding:14px; font-size:16px; }
+    .row { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:10px; }
+    .pos-indicator { font-size:13px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin:0 0 14px; }
+    section.block { border-top:1px solid var(--border); padding-top:18px; margin-top:18px; }
+
+    .modal-backdrop {
+      position:fixed; inset:0; background:rgba(0,0,0,.78);
+      display:flex; align-items:center; justify-content:center; padding:16px;
+    }
+    .modal-backdrop.hidden { display:none; }
+    .modal {
+      background:var(--bg); border:1px solid var(--border); padding:22px;
+      max-width:480px; width:100%; max-height:90vh; overflow-y:auto;
+    }
+    .modal h2 { font-size:19px; font-weight:600; margin:0 0 18px; padding-bottom:12px; border-bottom:1px solid var(--border); }
+
+
+    #fatal-error {
+      display:none; border:1px solid #b00; background:#1a0000; color:#ff8a8a;
+      padding:14px; margin-bottom:18px; font-size:14px; white-space:pre-wrap; border-radius:6px;
+    }
+
+    /* ── Door card (corridor screen) ───────────────────────────────────── */
+    .door-card {
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--warm);
+      display: flex;
+      flex-direction: column;
+      padding: 28px 24px 28px;
+      min-height: 460px;
+      background: linear-gradient(180deg, var(--surface) 0%, var(--bg) 100%);
+    }
+    .door-title-block { margin-bottom: auto; }
+    .door-title-block h2 { font-size: 22px; margin: 0 0 6px; font-weight: 600; letter-spacing: -.01em; }
+    .door-title-block .author { font-size: 15px; color: var(--muted); margin: 0; }
+    .door-controls {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 28px;
+      margin-top: 36px;
+    }
+    button.icon-btn {
+      width: 64px; height: 64px; border-radius: 50%;
+      background: var(--warm); color: var(--bg); border: none;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; padding: 0; flex-shrink: 0;
+      transition: background .15s ease, transform .1s ease;
+    }
+    button.icon-btn:hover { background: #dba05f; }
+    button.icon-btn:active { transform: scale(0.96); }
+    button.icon-btn[disabled] { background: var(--border); }
+    button.icon-btn:focus-visible, button.icon-btn:focus {
+      outline: 2px solid var(--focus); outline-offset: 3px;
+    }
+    button.icon-btn svg { display: block; pointer-events: none; }
+    button.icon-btn svg polygon, button.icon-btn svg rect { fill: var(--bg); }
+    button.doorknob-btn {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: transparent; border: 2px solid var(--fg);
+      cursor: pointer; padding: 0; margin-left: 14px;
+      transition: border-color .15s ease, background .15s ease;
+    }
+    button.doorknob-btn:hover { border-color: var(--warm); background: rgba(201,138,74,.12); }
+    button.doorknob-btn:focus-visible, button.doorknob-btn:focus {
+      outline: 2px solid var(--focus); outline-offset: 3px;
+    }
+
+    /* ── Fixed bottom bar ──────────────────────────────────────────────── */
+    .bottom-bar {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--bg); border-top: 1px solid var(--border);
+      display: flex; gap: 10px; padding: 10px 16px 24px; z-index: 50;
+    }
+    .bottom-bar button {
+      flex: 1; font-size: 13px; padding: 10px 8px; text-align: center;
+    }
+    .location-label {
+      display: block; font-size: 11px; color: var(--muted);
+      margin-top: 3px; text-transform: uppercase; letter-spacing: .06em;
+    }
+    .current-location-display {
+      flex: 1; font-size: 13px; padding: 10px 8px;
+      display: flex; flex-direction: column; justify-content: center;
+    }
+    .current-location-title {
+      font-size: 11px; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .06em;
+    }
+    body { padding-bottom: 100px; }
+
+    /* ── Room screen ───────────────────────────────────────────────────── */
+    .room-heading {
+      font-size: 13px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .1em; color: var(--muted); margin: 0 0 12px;
+    }
+    section.room-section { border-top: 1px solid var(--border); padding-top: 18px; margin-top: 18px; }
+
+    /* 3 square action buttons in a row */
+    .action-row {
+      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;
+    }
+    .action-row button {
+      aspect-ratio: 1/1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      font-size: 12px; text-align: center; padding: 10px 6px;
+      line-height: 1.3;
+    }
+
+    /* 2 path buttons in a row */
+    .path-row {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    }
+
+    /* Feedback drawer */
+    .feedback-drawer {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: #100f0d; border-top: 1px solid var(--warm-dim);
+      padding: 20px 20px 36px; z-index: 200;
+      max-height: 80vh; overflow-y: auto;
+      transform: translateY(100%);
+      transition: transform .3s ease;
+    }
+    .feedback-drawer.open { transform: translateY(0); }
+    .feedback-drawer h2 {
+      font-size: 17px; font-weight: 600; margin: 0 0 20px;
+      border-bottom: 1px solid var(--border); padding-bottom: 12px;
+    }
+    .feedback-field { margin-bottom: 20px; }
+    .feedback-field label {
+      display: block; font-size: 13px; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .07em; margin-bottom: 8px;
+    }
+    .scale-row {
+      display: flex; gap: 6px; flex-wrap: wrap;
+    }
+    .scale-row button {
+      width: 40px; height: 40px; border-radius: 50%;
+      font-size: 14px; font-weight: 600; padding: 0;
+      text-align: center;
+    }
+    .scale-row button.selected {
+      background: var(--warm); color: var(--bg);
+      border-color: var(--warm);
+    }
+    .check-row {
+      display: flex; align-items: center; gap: 12px; font-size: 16px;
+    }
+    .check-row input[type=checkbox] {
+      width: 22px; height: 22px; accent-color: var(--warm);
+    }
+    textarea.feedback-text {
+      width: 100%; background: var(--surface); color: var(--fg);
+      border: 1px solid var(--border); padding: 12px; font-size: 15px;
+      font-family: -apple-system, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif; resize: vertical;
+      min-height: 80px; border-radius: 0;
+    }
+    textarea.feedback-text:focus { outline: 2px solid var(--focus); outline-offset: 1px; }
+    .feedback-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .feedback-actions button { flex: 1; min-width: 120px; }
+    .flag-row { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 16px; }
+    .flag-btn {
+      background: transparent; border: 1px solid #8a3a3a;
+      color: #d98a8a; font-size: 13px; padding: 10px 14px; width: 100%;
+    }
+    .flag-btn:hover { background: rgba(138,58,58,.12); }
+
+    /* ── Intro screen ───────────────────────────────────────────────────── */
+    .intro-screen {
+      min-height: calc(100vh - 160px);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 22px;
+      padding: 10px 4px;
+    }
+    .intro-line {
+      font-size: 19px;
+      line-height: 1.6;
+      opacity: 0;
+      transform: translateY(18px);
+      animation: intro-rise 0.7s ease forwards;
+    }
+    @keyframes intro-rise {
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .intro-actions { margin-top: 30px; }
+    @media (prefers-reduced-motion: reduce) {
+      .intro-line { animation: none; opacity: 1; transform: none; }
+    }
+
+    /* ── Door cover image ──────────────────────────────────────────────────── */
+    .door-card { position: relative; }
+    .door-cover-img {
+      position: absolute;
+      top: 12px; right: 12px;
+      width: 80px;
+      height: 110px;
+      object-fit: cover;
+      object-position: center top;
+      opacity: 0.9;
+      pointer-events: none;
+      border: 1px solid var(--border);
+    }
+
+    /* ── Toast notification ─────────────────────────────────────────────────── */
+    .toast {
+      position: fixed; bottom: 110px; left: 50%; transform: translateX(-50%);
+      background: #161412; border: 1px solid var(--warm-dim);
+      color: var(--fg); padding: 14px 20px; font-size: 15px;
+      text-align: center; max-width: 320px; width: 90%;
+      z-index: 300; border-radius: 2px;
+      opacity: 0; transition: opacity .3s ease;
+      pointer-events: none;
+    }
+    .toast.visible { opacity: 1; }
+
+    /* ── Through screen: 3-door spatial layout ──────────────────────────── */
+    .through-space {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-rows: auto auto;
+      gap: 14px;
+      margin-top: 8px;
+    }
+    .through-door-front { grid-column: 2; grid-row: 1; }
+    .through-door-left  { grid-column: 1; grid-row: 2; }
+    .through-door-right { grid-column: 3; grid-row: 2; }
+    .through-door {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      padding: 20px 12px;
+      cursor: pointer;
+      text-align: center;
+      font-size: 14px;
+      font-family: -apple-system, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      color: var(--fg);
+      line-height: 1.4;
+      min-height: 90px;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: flex-end;
+      transition: border-color .15s ease, background .15s ease;
+    }
+    .through-door:hover { border-color: var(--warm-dim); background: #131210; }
+    .through-door:focus-visible, .through-door:focus {
+      outline: 2px solid var(--focus); outline-offset: 2px;
+    }
+    .through-door .door-direction {
+      font-size: 10px; text-transform: uppercase; letter-spacing: .1em;
+      color: var(--muted); margin-bottom: 6px;
+    }
+    .through-door .door-knob {
+      width: 10px; height: 10px; border-radius: 50%;
+      border: 1px solid var(--warm); margin: 10px auto 0;
+    }
+
+    /* ── Crumble path list ──────────────────────────────────────────────── */
+    .crumble-list { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+    .crumble-item {
+      border: 1px solid var(--border); background: var(--surface);
+      padding: 12px 14px; cursor: pointer;
+      font-family: -apple-system, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif; color: var(--fg);
+      text-align: left; width: 100%; font-size: 15px;
+      transition: border-color .15s ease;
+    }
+    .crumble-item:hover { border-color: var(--warm-dim); }
+    .crumble-item:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+    .crumble-item .crumble-author { font-size: 13px; color: var(--muted); margin-top: 3px; }
+  </style>
+</head>
+<body>
+
+  <a href="#dynamic-stage" class="skip-link">メインコンテンツへスキップ</a>
+
+  <!-- Screen reader live region -->
+  <div id="accessibility-announcer" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
+
+  <!-- Visible error surface (only shows if something throws) -->
+  <div id="fatal-error" role="alert"></div>
+
+  <!-- Persistent audio element (reused for all playback; needed for iOS Safari) -->
+  <audio id="book-audio" loop preload="auto" playsinline></audio>
+
+  <!-- Main content -->
+  <main id="dynamic-stage" tabindex="-1"></main>
+
+  <!-- Fixed bottom bar (always visible) -->
+  <div class="bottom-bar" id="bottom-bar">
+    <div class="current-location-display" id="btn-current-location">
+      <span class="current-location-title">現在地</span>
+      <span class="location-label" id="location-label"></span>
+    </div>
+    <button onclick="openTravelMenu()" aria-haspopup="dialog" style="font-weight:bold;">
+      移動メニュー
+    </button>
+  </div>
+
+  <!-- Travel modal -->
+  <div id="travel-modal-backdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-label="移動メニュー">
+    <div class="modal">
+      <h2>移動メニュー</h2>
+      <div class="stack">
+        <button id="btn-travel-back" onclick="travelBack()">
+          前の場所に戻る
+          <span class="btn-sub">一つ前の場所へ戻ります</span>
+        </button>
+        <button id="btn-travel-beginning" onclick="travelBeginning()">
+          この廊下の始まりへ
+          <span class="btn-sub">このフロアの最初の扉に戻ります</span>
+        </button>
+        <button onclick="travelMainHall()">
+          メインホールへ
+          <span class="btn-sub">最初に戻り、4つのウィングから選び直します</span>
+        </button>
+        <button id="btn-crumble" onclick="openCrumblePath()">
+          足あと（履歴）
+          <span class="btn-sub">これまで見た本を、新しい順に表示します</span>
+        </button>
+        <button class="center" onclick="closeTravelMenu()">メニューを閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    "use strict";
+
+    // Surface any uncaught error on screen so failures are never silent.
+    function showFatal(msg) {
+      var box = document.getElementById('fatal-error');
+      if (box) { box.style.display = 'block'; box.textContent = 'エラー: ' + msg; }
+    }
+    window.addEventListener('error', function (e) {
+      showFatal((e && e.message ? e.message : 'unknown') + (e && e.filename ? ' @ ' + e.lineno : ''));
+    });
+
+    // ── DATA ────────────────────────────────────────────────────────────────
+    var BOOKS = {
+      1:  { id:1,  title:'アンクシャス・ピープル',               author:'フレドリック・バックマン',     summary:"不器用な銀行強盗が、内見に来た一癖ある客たちを人質に取ってしまう。大晦日を舞台に、それぞれの個性がぶつかり合う、笑えて心温まる物語。", detailedSummary:"アンナ＝レーナとロジャーは、夫婦の隙間を埋めるように次々とアパートを買い漁っている。ユリアとロは、不安でいっぱいの出産間近のカップル。孤独な銀行支店長のザラは、高層階からの眺めを見たくて内見に来ただけ。87歳の祖母エステルは、人質を取った犯人をも温かく迎え入れる驚くほど穏やかな人物。警察が建物を包囲する中、見ず知らずの者たちは人間の弱さを分かち合い、深い絆で結ばれていく。不安に満ちたこの世界で、誰もが精一杯生きているのだと教えてくれる。", musicUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/Anxious%20people.MP3", coverUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/anxious%20people.png" },
+      2:  { id:2,  title:'ヴェリティ',                       author:'コリーン・フーヴァー',      summary:"売れない作家が、負傷した人気作家のシリーズを引き継ぐ仕事を引き受ける。やがて彼女は、恐ろしい隠された自伝を発見する。", detailedSummary:"ローウェン・アシュリーは、人気サスペンス作家ヴェリティ・クロフォードの夫ジェレミーから、一生に一度の執筆依頼を受ける。ヴェリティの混沌とした執筆ノートを確認するため彼らの家に滞在するうち、ローウェンは未発表の原稿を発見する。そこにはヴェリティの暗い内面と娘たちの悲劇的な死についての、ぞっとする告白が綴られていた。ジェレミーへの急速に高まる感情と闘いながら、ローウェンはその恐ろしいページを公にすべきか決断を迫られる。どこまでが操作された虚構で、どこからが衝撃的な真実なのか分からないまま。", musicUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/Verity.MP3", coverUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/verity.png" },
+      3:  { id:3,  title:'ザ・キーライム・ガーデン・イン',      author:'アニー・キャボット',         summary:"裏切られた人生から逃れたマギーは、フロリダ・キャプティバ島の秘密に満ちた歴史あるインを再生し、思いがけない再出発を見つける。", detailedSummary:"マサチューセッツでの完璧な暮らしは、夫の突然の死によって明かされた幾重もの金銭的裏切りで一変する。海辺のキャプティバ島へ逃れたマギーは、ローズ・ジョンソン・レーンと親しくなる。彼女の古い屋敷には何十年もの謎が眠っていた。ローズの死後、マギーは荒れ果てた歴史あるキーライム・ガーデン・インを相続し、建物の改修、姉妹のような絆、そして壊滅的な喪失のあとに一から始め、再び花開くための、苦しくも勝ち取った勇気の旅へと踏み出していく。", musicUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/The%20key%20lime%20garden%20inn.MP3", coverUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/key%20lime%20garden%20inn.png" },
+      4:  { id:4,  title:'ア・リトル・ビット・オブ・サンシャイン',     author:'ニック・アレクサンダー',      summary:"二人の姉妹がギリシャの離島で10日間を過ごす。照りつける太陽の下、古い確執が艶やかな仮面の下からひび割れていく。", detailedSummary:"ディーはサルフォードで静かで雨がちな暮らしを送り、シャンパンに彩られた華やかな姉トリーナの生活とは正反対だ。人里離れたエーゲ海の楽園の照りつける太陽の下で、長く燻ってきた姉妹の対抗心と根深い嫉妬が沸き立ち始める。魅力的なホストに導かれ、ギリシャの乾いた熱気の中で追い詰められた姉妹は、見せかけの競争的な体面を保ち続けることの痛みを伴う真実、暗い秘密、そして高い心理的代償と向き合わざるを得なくなる。", musicUrl:null, coverUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/A%20little%20bit%20of%20sunshine.png" },
+      5:  { id:5,  title:'ビギニング・トゥ・リブ',            author:'エミー・ヴァン・デュルゼン',    summary:"哲学者でありセラピストでもある著者による、人生の実践的な課題への手引き。身体・社会・個人・精神の各次元から私たちの経験を見つめる。", detailedSummary:"エミー・ヴァン・デュルゼンは、実存哲学という構造化された視点から人間の葛藤を捉え、生を切り抜けるための優雅な見取り図を示す。苦しみを避けるのではなく、読者は逆境を能動的で美しい挑戦として受け入れるよう促される。人生の4つの主要な次元を検討することで、本書は自律性を取り戻し、目的を再構築し、未来を予測不能な脅威としてではなく、現在進行形で創られていく傑作として捉えるための有用な枠組みを提供する。", musicUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/Beginning%20to%20live.MP3", coverUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/beginning%20to%20live.png" },
+      6:  { id:6,  title:'サースト',                       author:'ジョン・ロビンズ',         summary:"テレビ番組の優勝者でもある放送作家ジョン・ロビンズが、アルコール依存症との闘いと、しらふへ向かう心揺さぶる道のりをユーモアを交えて綴る。", detailedSummary:"痛々しいほど見事な正直さで書かれた本書で、ジョン・ロビンズは思春期に初めて口にした酒から、どん底、そして2022年の回復に至るまで、アルコールとの関係を辿っていく。依存症の壊滅的な真実と、熟練コメディアンならではのブラックユーモアのバランスを取りながら、この物語は同じ苦しみの中にいる人々への警告の灯火であると同時に、人間の回復力、自己赦し、そしてしらふの心がもたらす癒しの明晰さへの賛歌でもある。", musicUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/Thirst.MP3", coverUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/Thirst.png" },
+      7:  { id:7,  title:'ランド',                         author:"マギー・オファレル",    summary:"1865年のアイルランド。父と息子は野心的な陸地測量の地図作成に従事するが、不穏な森での出来事によって進路を変えられていく。", detailedSummary:"トーマスと寡黙で気の進まない息子リアムは、アイルランドの海岸線を精密に地図化する任務に就くが、出来事は奇妙な霊的様相を帯びていく。古く風吹きすさぶアイルランドの半島の奥深くで、マギー・オファレルは埋もれた家族の宝、執拗な亡霊との遭遇、驚くほど忠実な猟犬、そして私たちがいかに土地を主張し、境界を引き、歴史の中で本当に埋もれたままのものなど何もないと悟るかについての叙情的な瞑想を、豊かな歴史絵巻として織り上げる。", musicUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/Land.MP3", coverUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/land.png" },
+      8:  { id:8,  title:'ハウス・オブ・アース・アンド・ブラッド',     author:'サラ・J・マース',       summary:"半妖精のブライス・クインランと堕天使ハント・アサラーが手を組み、ルナシオンを揺るがす残虐な連続殺人の謎に挑む、疾走感あふれるファンタジー。", detailedSummary:"ブライス・クインランは、悪魔の虐殺によって親友たちを奪われるまで、クレセント・シティのパーティーシーンを愛していた。2年後、再び殺人鬼が動き出し、彼女は奴隷として囚われた悪名高い暗殺者の天使ハント・アサラーと手を組まざるを得なくなる。二人は街の最も深い犯罪の地下世界へと潜り込み、恐ろしい陰謀、禁じられた魔法、そしてすべての市民を脅かす古の力を発見していく。互いの間に高まる爆発的な化学反応と闘いながら。", musicUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/House%20of%20earth%20and%20blood.MP3", coverUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/House%20of%20earth%20and%20blood.png" },
+      9:  { id:9,  title:'バインディング・サーティーン',                   author:'クロエ・ウォルシュ',         summary:"スター・ラグビー選手と、心に傷を負った転校生。学期の途中で交わる二人を描く、感情豊かでスローバーンなアイルランドの恋物語。", detailedSummary:"ジョニー・カヴァナーは、怪我の影が忍び寄る中でもラグビーのトップリーグを目指すことだけに集中する、トメン・カレッジの地元の有名人。シャノン・リンチは、深刻な家庭内トラウマとパニック障害から逃れようとする、静かでいじめを受けてきた転校生。偶然の出会いを通じて惹かれ合った二人は、守り合う複雑な絆を築いていく。この重厚な現代ドラマは、癒しへの長く険しい道のり、若い愛の力、そして有害な連鎖を断ち切るために必要な強さを描く。", musicUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/Binding%2013.MP3", coverUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/binding%2013.png" },
+      10: { id:10, title:'ユー・アー・ヒア',                 author:'デイヴィッド・ニコルズ',      summary:"孤独で漂うような二人の魂が、降りやまない灰色の雨の中、イングランドの田園地帯を横断する壮大な徒歩旅行で引き合わされる。", detailedSummary:"マーニーは、仕事のストレスに追われ同じ日々を繰り返しながら、ロンドンの孤独な部屋に閉じこもっている。マイケルは、壊れた結婚から逃れるように、自然の中をますます長く一人で歩くようになり、崩れかけている。共通の友人が企画したグループ・ハイキングで、見知らぬ二人は並んで歩くことになる。荒野を越え、吹きすさぶ嵐の中で、共に味わう身体的な苦闘が、静かでユーモラスで優しいつながりを育んでいく。自分を見失うことこそ、しばしば自分を見つける唯一の道なのだと示しながら。", musicUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/You%20are%20here.MP3", coverUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/you%20are%20here.png" },
+      11: { id:11, title:'ファニー・ストーリー',                  author:'エミリー・ヘンリー',         summary:"ダフネは自己防衛のため、元婚約者の新しい婚約者の元恋人マイルズと、思いがけないルームシェアを始めることになる。", detailedSummary:"ピーターが幼なじみのペトラへの愛を告げ、ミシガンに取り残された図書館司書補のダフネは、自分と同じ奇妙な悲しみを分かち合える唯一の人物、ペトラの破天荒な元恋人マイルズと取り残される。生き延びるため、二人は厳しいルールを定めてアパートをシェアすることに同意する。だが元恋人たちを嫉妬させようと偽の写真を投稿し始めたとき、二人はダフネが綿密に描いてきた未来の筋書きを永遠に書き換えかねない、発見の夏へと踏み出していく。", musicUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/Funny%20story.MP3", coverUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/funny%20story.png" },
+      12: { id:12, title:"ザ・ヴァイオリン・メーカーズ・シークレット",    author:'イーヴィー・ウッズ',          summary:"ヒースロー空港で出会った見ず知らずの三人が、忘れ去られた一挺の希少なヴァイオリンによって結び付けられ、それぞれの人生が変わっていく。", detailedSummary:"デヴリンは重い心を抱えた手荷物係。ウォルターは亡き伴侶を想う退職した歴史教師、そしてガブリエルは過去から逃げる才能ある楽器鑑定士。空港の忘れ物の中に見事な細工の18世紀のヴァイオリンが現れたとき、三人は戦火に引き裂かれたヨーロッパにまたがる一世紀前の謎へと巻き込まれていく。楽器の隠された引き出しの秘密を解くために、彼らはまず自分自身の根深い秘密を打ち明け、再び生き始める勇気を見つけなければならない。", musicUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/The%20violin%20Maker's%20Secret.MP3", coverUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/the%20violin%20maker's%20secret.png" },
+      13: { id:13, title:'テイミング・ミスター・ウォーカー',            author:'ローザ・ルーカス',          summary:"物静かな社員と、兄の親友である傲慢で強大なテック業界の大物。激しいオフィス・ロマンス。", detailedSummary:"ダニー・ウォーカーは10代の頃の私の告白をきっぱり拒み、私は恥ずかしさと距離を感じたまま8年が過ぎた。そして彼は、私が働く巨大テック企業を買収し、究極の上司となる。ダニーは冷たく計算高く、冷然とした威厳で部屋を支配する。だが直接の上下関係が重なり合ううち、凍てついた職業上の外面が溶け始め、燃えるような情熱と長く隠されてきた弱さ、そして何年も燃え続けてきた激しい感情があらわになっていく。", musicUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/Taming%20Mr.%20Walker.MP3", coverUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/Taming%20mr%20walker.png" },
+      14: { id:14, title:'ザ・ハンド・ザット・ファースト・ヘルド・マイン',author:"マギー・オファレル",    summary:"1950年代のソーホーと現代ロンドンを生きる情熱的な二人の女性が、芸術・母性・秘密の遺産によって世代を越えて結び付けられる。", detailedSummary:"レクシー・シンクレアは、田舎のデヴォンを離れ、洗練されたイネス・ケントとともにロンドンのボヘミアンな20世紀半ばのソーホーで運命を切り開こうとする。50年後、エリーナとテッドは、最初の子の出産が命に関わるものとなったあと、立ち直ろうともがいている。テッドの幼少期の記憶が断片化し渦巻くにつれ、偶然の網が一枚の美しく涙を誘う肖像を浮かび上がらせる。愛と喪失、そして不屈の女性の魂が、いかに世代を越えて生き延びるかを描いて。", musicUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/The%20Hand%20That%20First%20Held%20Mine.MP3", coverUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/The%20hand%20that%20first%20held%20mine.png" },
+      15: { id:15, title:'プロジェクト・ヘイル・メアリー',            author:'アンディ・ウィアー',           summary:"孤独な宇宙飛行士が、重度の記憶喪失のまま目覚める。太陽を蝕む微生物の災厄から地球を救う、絶望的な恒星間ミッションの最中で。", detailedSummary:"ライランド・グレースは、最後の最後の世界規模のミッションの唯一の生存者だ。記憶が少しずつ戻るにつれ、彼は自らの任務の重大さを悟る。太陽を加熱するアストロファージの治療法を見つけること、それも二人の死んだ乗組員だけを道連れに。地球から何百万マイルも離れた深宇宙へ放り込まれた彼は、科学的推論、創意工夫に満ちた物理学、そして驚くべき地球外の技術者との、驚愕の、そして胸を打つ同盟に頼らざるを得なくなる。", musicUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/Project%20Hail%20Mary.MP3", coverUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/project%20hail%20mary.png" },
+      16: { id:16, title:'ディア・デビー',                  author:'フリーダ・マクファデン',     summary:"人気の人生相談コラムニストが、ついに自分の人生を台無しにする家族に対し、痛快で計算された復讐に出ることを決意する。", detailedSummary:"デビー・マレンは何十年もの間、不安を抱える郊外の家庭に、完璧に測られた穏やかな助言を授けてきた。だが自身の人生が崩壊し、連載コラムを失い、10代の子どもたちが問題を起こし、夫が秘密の銀行口座を隠していたことが発覚したとき、彼女は大人であろうとするのをやめる。自らのルールに従い、家庭と正気を取り戻すために手の込んだ痛快きわまる復讐の数々を繰り広げるデビーの姿を、私たちは見届けることになる。", musicUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/Dear%20Debbie.MP3", coverUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/dear%20debbie.png" },
+      17: { id:17, title:'ホエン・ザ・クレインズ・フライ・サウス',    author:'リサ・リゼン',         summary:"高齢のスウェーデン人農夫が、愛犬と自らの尊厳を守るために闘う。息子が彼を介護施設に入れようとする中で。", detailedSummary:"ボーはスウェーデン北部の小さな先祖伝来の農場で、地元の訪問看護チームの助けを借りて暮らしている。彼の日々は、忠実な愛犬シクステン、古い友人との電話、そして亡き妻の美しい思い出によって明るく保たれている。しかし息子が安全のためにシクステンを引き離そうと強く迫るようになると、それは深い感情の目覚めを引き起こし、ボーは自らの生き方を守るため、静かで頑固な抵抗を始める。", musicUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/When%20the%20Cranes%20Fly%20South.MP3", coverUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/when%20the%20cranes%20fly%20south.png" },
+      18: { id:18, title:'ブロークン・カントリー',               author:'クレア・レスリー・ホール',   summary:"イングランドの村で起きた衝撃的な殺人事件で、初恋の相手が裁判にかけられるのを見守る若い女性を描く、緊迫した叙情的スリラー。", detailedSummary:"ベスがガブリエルと初めて出会ったのは、彼女の芸術的視野を一変させた黄金のような陶酔の夏だった。彼が突然、痛みとともに去ってから10年後、ガブリエルは静かな村に戻り、ベスが自ら築いた安定した生活を揺るがす。二つの時間軸を交錯させる構成で語られるこの暗いサスペンスは、あの忘れがたい最初の夏と現代の法廷の間を行き来し、運命の殺人の夜に何が起きたのかをめぐる緊張を高めていく。", musicUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/Broken%20country.MP3", coverUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/broken%20country.png" },
+      19: { id:19, title:'ビフォア・ザ・コーヒー・ゲッツ・コールド',  author:'川口俊和',summary:"東京の静かな地下の喫茶店で、客は過去へ戻る稀有な機会を与えられる。ただし、コーヒーが冷めてしまう前に戻らなければならない。", detailedSummary:"過去へ戻るには、特定の伝説的な席に座り、厳しいルールを受け入れなければならない。会えるのは喫茶店を訪れたことのある人だけ、現在を変えることはできず、そして何より、コーヒーが冷めてしまう前にすべて飲み干さなければならない。この美しく紡がれた物語は、過去の別れや手紙、人間関係に決着をつけようとする幾人かの来訪者を追う。記憶は過去を変えられないが、明日をどう生きるかを導く力強い指針であり続けるのだと、彼らは学んでいく。", musicUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/Before%20the%20cofee%20gets%20cold.MP3", coverUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/before%20coffee%20gets%20cold.png" },
+      21: { id:21, title:'ザ・ディナー・パーティー',             author:'フリーダ・マクファデン',     summary:"家賃に困ったウェイトレスが、ペイトンズ・ピークの人里離れた邸宅で、高額だがひどく怪しいシフトを引き受ける。", detailedSummary:"立ち退きまであと数日というとき、裕福で風変わりな友人が、極めてプライベートな招待制の晩餐会でウェイトレスをすれば倍の報酬を払うと持ちかける。携帯の電波も届かない広大で歴史ある山間の邸宅で、客たちの奇妙な振る舞いと、ホストの暗く施錠された数々の扉が、募る疑心暗鬼を引き起こしていく。古典的スリラーの選択を遊び心たっぷりにひねり、この物語はあなた自身に進む道を選ぶ力を与える。", musicUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/The%20dinner%20party.MP3", coverUrl:"https://cdn.jsdelivr.net/gh/yukasatori-pixel/sound-test@main/the%20dinner%20party.png" }
+    };
+
+    // Floor key convention:
+    //   'Top Floor'    = Trending & New Releases  (always first)
+    //   sub-genre floors in between
+    //   'Basement'     = Surprise & Deep Cuts      (always last)
+    var SPATIAL_METRIC_MAP = {
+      '北ウィング（フィクション）': {
+        '最上階 — 話題作・新刊':            [11, 2, 9, 1],
+        'フィクション':                      [1, 10, 16, 19, 14],
+        'SF・ファンタジー':                  [15, 8, 7, 1, 19],
+        'ロマンス':                          [9, 11, 13, 3, 4],
+        'クライム・ミステリー・スリラー':    [2, 18, 21, 16, 8],
+        'アート・エンタメ':                  [12, 14, 19, 7, 1],
+        '児童書':                            [3, 10, 4, 19, 1],
+        '地下 — 隠れた名作・発見':           [14, 21, 12, 7, 17]
+      },
+      '南ウィング（ライフスタイル）': {
+        '最上階 — 話題作・新刊':            [6, 5, 3, 4, 19],
+        'ホーム・ガーデン':                  [3, 4, 10, 19, 17],
+        '健康・ウェルネス':                  [5, 6, 17, 10, 19],
+        '自己啓発・ハウツー':                [5, 6, 19, 17, 1],
+        'スポーツ':                          [9, 6, 10, 17, 4],
+        '旅・休暇':                          [4, 3, 19, 10, 12],
+        '地下 — 隠れた名作・発見':           [19, 16, 14, 7, 21]
+      },
+      '西ウィング（サイエンス）': {
+        '最上階 — 話題作・新刊':            [15, 8, 7, 5, 17],
+        'サイエンス':                        [15, 7, 8, 5, 17],
+        'コンピュータ・テクノロジー':        [8, 15, 13, 5, 17],
+        'ビジネス':                          [13, 17, 5, 16, 6],
+        'ファイナンス':                      [16, 13, 5, 17, 6],
+        '教育・学習':                        [5, 7, 17, 15, 19],
+        '地下 — 隠れた名作・発見':           [8, 15, 21, 18, 7]
+      },
+      '東ウィング（社会）': {
+        '最上階 — 話題作・新刊':            [17, 6, 14, 7],
+        '歴史':                              [7, 17, 14, 12],
+        '伝記':                              [6, 17, 14, 10],
+        '政治':                              [17, 5, 7, 6],
+        'LGBTQ+':                            [10, 9, 14, 11],
+        '宗教・スピリチュアル':              [19, 5, 7, 17, 14],
+        '地下 — 隠れた名作・発見':           [16, 21, 18, 12, 15]
+      }
+    };
+
+    // ── STATE ───────────────────────────────────────────────────────────────
+    var state = {
+      screen:'intro', currentWing:null, currentFloor:null,
+      currentBooks:[], currentIndex:0, bookId:null,
+      readBooks:[], favorites:[], history:[], showDetailed:false,
+      activeAudioBookId:null, audioState:'stopped'
+    };
+
+    // ── AUDIO (single persistent element, iOS-friendly) ───────────────────────
+    function getAudioEl(){ return document.getElementById('book-audio'); }
+
+    function stopAudio(){
+      var el = getAudioEl();
+      if (el) { try { el.pause(); } catch(e){} }
+      state.activeAudioBookId = null;
+      state.audioState = 'stopped';
+    }
+
+    // Replace just the SVG inside the current Play button — no full render(),
+    // no aria-* changes. This way VoiceOver does NOT re-read the button when
+    // playback starts/stops; the icon flips silently.
+    var PLAY_SVG = '<svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><polygon points="5,3 19,11 5,19" fill="black"/></svg>';
+    var STOP_SVG = '<svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="4" width="5" height="14" rx="1" fill="black"/><rect x="13" y="4" width="5" height="14" rx="1" fill="black"/></svg>';
+
+    function updatePlayIconOnly(){
+      if (state.screen !== 'corridor') return;
+      // The Play button is the first .icon-btn inside .door-controls
+      var btn = document.querySelector('.door-controls .icon-btn');
+      if (!btn) return;
+      var isPlaying = state.audioState === 'playing';
+      var newSvg = isPlaying ? STOP_SVG : PLAY_SVG;
+      // Only touch innerHTML if the icon actually differs
+      if (btn.innerHTML.indexOf(isPlaying ? 'rect' : 'polygon') === -1) {
+        btn.innerHTML = newSvg;
+      }
+    }
+
+    function toggleBookAudio(bookId){
+      // Stop case: we already silence things, but do NOT call render() — that
+      // would rewrite the button and make VoiceOver re-read it. Just swap the icon.
+      if (state.activeAudioBookId === bookId && state.audioState !== 'stopped'){
+        stopAudio();
+        updatePlayIconOnly();
+        return;
+      }
+      stopAudio();
+      var book = BOOKS[bookId];
+      if (!book) return;
+      if (!book.musicUrl){ announce('「' + book.title + '」の音声はありません。'); return; }
+
+      var el = getAudioEl();
+      if (!el) return;
+
+      state.activeAudioBookId = bookId;
+      state.audioState = 'loading';
+      // Intentionally no render() here — see comment above.
+
+      var announced = false;
+      el.onplaying = function(){
+        if (announced || state.activeAudioBookId !== bookId) return;
+        announced = true;
+        state.audioState = 'playing';
+        updatePlayIconOnly();
+      };
+      el.onerror = function(){
+        if (state.activeAudioBookId !== bookId) return;
+        stopAudio();
+        updatePlayIconOnly();
+        announce('申し訳ありません。「' + book.title + '」の音声を再生できませんでした。');
+      };
+
+      el.volume = 0.85;
+      el.src = book.musicUrl;
+      el.load();
+      var p = el.play();
+      if (p && typeof p.catch === 'function'){
+        p.catch(function(){
+          if (state.activeAudioBookId !== bookId) return;
+          stopAudio();
+          updatePlayIconOnly();
+          announce('申し訳ありません。「' + book.title + '」の音声を再生できませんでした。');
+        });
+      }
+    }
+
+    // ── ACCESSIBILITY ────────────────────────────────────────────────────────
+    function announce(msg){
+      var el = document.getElementById('accessibility-announcer');
+      if (!el) return;
+      el.textContent = '';
+      setTimeout(function(){ el.textContent = msg; }, 50);
+      // Clear after VO has had time to read it, so later DOM traversal
+      // through this (visually hidden) node never re-speaks stale text.
+      setTimeout(function(){ el.textContent = ''; }, 5000);
+    }
+    function focusStage(){
+      var stage = document.getElementById('dynamic-stage');
+      if (!stage) return;
+      // Always focus the stage container itself (not a heading inside it).
+      // This guarantees VoiceOver's cursor moves to the very top of the new
+      // screen every time, regardless of what's first in the markup.
+      if (!stage.hasAttribute('tabindex')) stage.setAttribute('tabindex', '-1');
+      try {
+        stage.focus();
+        // Some VoiceOver/Safari combos need scroll reset too
+        window.scrollTo(0, 0);
+      } catch(e){}
+    }
+
+    // ── HISTORY ──────────────────────────────────────────────────────────────
+    function pushHistory(){
+      state.history.push({
+        screen:state.screen, currentWing:state.currentWing, currentFloor:state.currentFloor,
+        currentBooks:state.currentBooks.slice(), currentIndex:state.currentIndex, bookId:state.bookId
+      });
+    }
+    function initHistory(){
+      state.history = [{ screen:'main_hall', currentWing:null, currentFloor:null, currentBooks:[], currentIndex:0, bookId:null }];
+    }
+    function initIntroHistory(){
+      state.history = [{ screen:'intro', currentWing:null, currentFloor:null, currentBooks:[], currentIndex:0, bookId:null }];
+    }
+
+    // ── NAVIGATION ───────────────────────────────────────────────────────────
+    function selectWing(wingName){
+      stopAudio();
+      state.screen='floor_select'; state.currentWing=wingName; state.currentFloor=null;
+      state.currentBooks=[]; state.currentIndex=0; state.bookId=null;
+      pushHistory(); render();
+      announce(wingName + 'に入りました。フロアを選んでください。話題作・新刊の最上階、通常の蔵書のフロア、または隠れた名作の地下があります。');
+      focusStage();
+    }
+    function selectFloor(floorName){
+      stopAudio();
+      var booksList = (SPATIAL_METRIC_MAP[state.currentWing] || {})[floorName] || [];
+      state.screen='corridor'; state.currentFloor=floorName; state.currentBooks=booksList;
+      state.currentIndex=0; state.bookId=null;
+      pushHistory(); render();
+      var first = booksList[0] ? BOOKS[booksList[0]] : null;
+      announce(state.currentWing + 'の' + floorName + 'に入りました。この階には' + booksList.length + 'つの扉があります。' + (first ? '最初の扉：' + first.title + '、' + first.author + '。' : ''));
+      focusStage();
+    }
+    function skipDoor(){
+      stopAudio();
+      var nextIndex = state.currentIndex + 1;
+      if (nextIndex >= state.currentBooks.length){
+        state.screen='end_corridor'; pushHistory(); render();
+        announce('この廊下の終わりに到達しました。');
+      } else {
+        state.currentIndex = nextIndex; pushHistory(); render();
+        var book = BOOKS[state.currentBooks[state.currentIndex]];
+        announce((state.currentBooks.length) + '扉中' + (state.currentIndex + 1) + '番目。' + (book ? book.title + '、' + book.author : '') + '。');
+      }
+      focusStage();
+    }
+    function knockDoor(id){
+      stopAudio();
+      if (state.readBooks.indexOf(id) === -1) state.readBooks.push(id);
+      state.screen='room'; state.bookId=id; state.showDetailed=false;
+      pushHistory(); render();
+      var b = BOOKS[id];
+      announce('扉を開きました。' + (b ? b.title + '、' + b.author : '不明') + 'の詳細です。');
+      focusStage();
+    }
+    function returnToCorridor(){
+      stopAudio();
+      state.screen='corridor'; state.bookId=null; pushHistory(); render();
+      announce('廊下に戻りました。'); focusStage();
+    }
+    function goThrough(id){
+      stopAudio();
+      state.screen='through'; state.bookId=id; pushHistory(); render();
+      announce('3つの関連する道が現れました。この本を見た人はこんな本も、似た雰囲気の本、関連作品です。');
+      focusStage();
+    }
+    function branchToCorridor(categoryName){
+      stopAudio();
+      var lists = { Similar:[2,21,11,9], Style:[14,7,16,21,19], Related:[15,8,5,6,18] };
+      var labels = { Similar:'この本を見た人はこんな本も', Style:'似た雰囲気の本', Related:'関連作品' };
+      var booksList = lists[categoryName] || [];
+      state.screen='corridor'; state.currentWing='関連の扉'; state.currentFloor=labels[categoryName] || categoryName;
+      state.currentBooks=booksList; state.currentIndex=0; state.bookId=null;
+      pushHistory(); render();
+      var first = BOOKS[booksList[0]];
+      announce((labels[categoryName] || categoryName) + 'の道に入りました。' + booksList.length + 'つの扉があります。' + (first ? '最初：' + first.title : '') + '。');
+      focusStage();
+    }
+
+    // ── FAVORITES / ACTIONS ───────────────────────────────────────────────────
+    function toggleFavorite(bookId){
+      var idx = state.favorites.indexOf(bookId);
+      if (idx > -1){ state.favorites.splice(idx,1); announce('「' + (BOOKS[bookId]?BOOKS[bookId].title:'') + '」をお気に入りから削除しました。'); }
+      else { state.favorites.push(bookId); announce('「' + (BOOKS[bookId]?BOOKS[bookId].title:'') + '」をお気に入りに追加しました。'); }
+      render();
+    }
+    function startReading(bookId){ announce('「' + (BOOKS[bookId]?BOOKS[bookId].title:'') + '」をお楽しみください。'); }
+    function exploreRandom(){
+      var wings = Object.keys(SPATIAL_METRIC_MAP);
+      var randomWing = wings[Math.floor(Math.random()*wings.length)];
+      var floors = Object.keys(SPATIAL_METRIC_MAP[randomWing]);
+      var randomFloor = floors[Math.floor(Math.random()*floors.length)];
+      state.currentWing = randomWing; selectFloor(randomFloor);
+    }
+
+    // ── TRAVEL MODAL ──────────────────────────────────────────────────────────
+    var lastFocusedBeforeModal = null;
+    function openTravelMenu(){
+      lastFocusedBeforeModal = document.activeElement;
+      document.getElementById('travel-modal-backdrop').classList.remove('hidden');
+      var backBtn = document.getElementById('btn-travel-back');
+      if (state.history.length <= 1) backBtn.setAttribute('disabled','true'); else backBtn.removeAttribute('disabled');
+      var beginBtn = document.getElementById('btn-travel-beginning');
+      var inCorridor = state.screen==='corridor' || state.screen==='room' || state.screen==='end_corridor';
+      if (!inCorridor) beginBtn.setAttribute('disabled','true'); else beginBtn.removeAttribute('disabled');
+      announce('移動メニューを開きました。');
+      var firstEnabled = backBtn.hasAttribute('disabled')
+        ? (beginBtn.hasAttribute('disabled') ? document.querySelector('#travel-modal-backdrop button:not([disabled])') : beginBtn)
+        : backBtn;
+      if (firstEnabled){ try { firstEnabled.focus(); } catch(e){} }
+    }
+    function closeTravelMenu(){
+      document.getElementById('travel-modal-backdrop').classList.add('hidden');
+      if (lastFocusedBeforeModal){ try { lastFocusedBeforeModal.focus(); } catch(e){} }
+    }
+    function travelBack(){
+      stopAudio();
+      if (state.history.length > 1){
+        state.history.pop();
+        var prev = state.history[state.history.length - 1];
+        state.screen=prev.screen; state.currentWing=prev.currentWing; state.currentFloor=prev.currentFloor;
+        state.currentBooks=prev.currentBooks.slice(); state.currentIndex=prev.currentIndex; state.bookId=prev.bookId;
+        closeTravelMenu(); render(); announce('前の場所に戻りました。'); focusStage();
+      }
+    }
+    function travelBeginning(){
+      stopAudio();
+      var inCorridor = state.screen==='corridor' || state.screen==='room' || state.screen==='end_corridor';
+      if (inCorridor){
+        state.currentIndex=0; state.bookId=null; state.screen='corridor';
+        pushHistory(); closeTravelMenu(); render();
+        var first = BOOKS[state.currentBooks[0]];
+        announce('廊下の始まりに戻りました。最初の扉：' + (first ? first.title : '') + '。');
+        focusStage();
+      }
+    }
+    function travelMainHall(){
+      stopAudio();
+      state.screen='main_hall'; state.currentWing=null; state.currentFloor=null;
+      state.currentBooks=[]; state.currentIndex=0; state.bookId=null;
+      initHistory(); closeTravelMenu(); render();
+      announce('メインホールに戻りました。4つのウィングから好きなものを選んで探索してください。');
+      focusStage();
+    }
+
+    function enterMainHall(){
+      stopAudio();
+      state.screen = 'main_hall';
+      initHistory();
+      render();
+      announce('メインホールです。4つのウィングから好きなものを選んで探索してください。');
+      focusStage();
+    }
+
+    // ── ACCORDION ─────────────────────────────────────────────────────────────
+    function toggleDetailedAccordion(){
+      state.showDetailed = !state.showDetailed; render();
+      announce(state.showDetailed ? '詳しいあらすじを表示しました。' : '詳しいあらすじを閉じました。');
+    }
+
+    // ── HELPERS ───────────────────────────────────────────────────────────────
+    function esc(str){
+      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+
+    // ── RENDER ────────────────────────────────────────────────────────────────
+    function render(){
+      var stage = document.getElementById('dynamic-stage');
+      if (!stage) return;
+      var html = '';
+
+      if (state.screen === 'intro'){
+        var introLines = [
+          "音の無限図書館へようこそ。",
+          "この果てしない迷宮のような図書館では、音の力だけを頼りに本と出会うことができます。",
+          "まずはウィングとフロアを選び、廊下へと足を踏み入れてください。そこでは、すべての扉の向こうから音楽とナレーターの声が、それぞれの本の世界を生き生きと響かせています。",
+          "もし心を惹かれる本があれば、扉を開けて中へ入ってみてください。",
+          "扉から扉へは、軽くスワイプするだけで進めます。",
+          "それでは、あなたの旅をお楽しみください。"
+        ];
+        html = '<div class="intro-screen">' +
+          introLines.map(function(line, i){
+            var delay = (i * 0.45).toFixed(2);
+            return '<p class="intro-line" style="animation-delay:' + delay + 's;">' + esc(line) + '</p>';
+          }).join('') +
+          '<div class="intro-actions">' +
+          '<button class="primary" onclick="enterMainHall()" aria-label="図書館に入る">図書館に入る</button>' +
+          '</div>' +
+          '</div>';
+
+      } else if (state.screen === 'main_hall'){
+        // compass order: North, West, East, South  →  position classes
+        var compassOrder = [
+          ['北ウィング（フィクション）', '北ウィング', 'フィクション',   'tile-north'],
+          ['西ウィング（サイエンス）',   '西ウィング', 'サイエンス',     'tile-west'],
+          ['東ウィング（社会）',         '東ウィング', '社会',           'tile-east'],
+          ['南ウィング（ライフスタイル）','南ウィング', 'ライフスタイル', 'tile-south']
+        ];
+        html = '<h2 class="section-heading">メインホール：ウィングを選ぶ</h2>' +
+          '<div class="compass-grid">' +
+          compassOrder.map(function(w){
+            return '<button class="tile ' + w[3] + '" onclick="selectWing(\'' + esc(w[0]) + '\')" aria-label="' + esc(w[2] + '、' + w[1]) + '">' +
+              esc(w[2]) + '<span class="tile-sub">' + esc(w[1]) + '</span></button>';
+          }).join('') + '</div>';
+
+      } else if (state.screen === 'floor_select'){
+        var floors = Object.keys(SPATIAL_METRIC_MAP[state.currentWing] || {});
+        html = '<h2 class="section-heading">' + esc(state.currentWing) + '</h2>' +
+          '<div class="stack">' +
+          floors.map(function(f){
+            var isTop      = f.indexOf('最上階') === 0;
+            var isBasement = f.indexOf('地下') === 0;
+            var cls = (isTop || isBasement) ? ' class="primary"' : '';
+            return '<button' + cls + ' onclick="selectFloor(\'' + esc(f) + '\')">' + esc(f) + '</button>';
+          }).join('') +
+          '</div>';
+
+      } else if (state.screen === 'corridor'){
+        var bookId = state.currentBooks[state.currentIndex];
+        var book = BOOKS[bookId];
+        var isCurrent = state.activeAudioBookId === bookId;
+        var isPlaying = isCurrent && state.audioState === 'playing';
+        var isLoading = isCurrent && state.audioState === 'loading';
+        var hasAudio = !!(book && book.musicUrl);
+        // Stable label so VoiceOver doesn't re-announce when state flips.
+        // The actual on/off state is conveyed by aria-pressed; VoiceOver
+        // reads that as "selected" / "not selected" without re-reading the label.
+        var audioAriaLabel = hasAudio
+          ? 'この扉の音声を再生・停止する'
+          : 'この扉に音声はありません';
+
+        // Initial icon at render time (Play). updatePlayIconOnly() flips it later
+        // without re-rendering, so VoiceOver does not re-read the button.
+        var initialPlayIcon = (isCurrent && isPlaying) ? STOP_SVG : PLAY_SVG;
+
+        // Skip icon (double triangle)
+        var skipIconSvg = '<svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><polygon points="2,3 12,11 2,19" fill="black"/><polygon points="10,3 20,11 10,19" fill="black"/></svg>';
+
+        // Update bottom bar location label
+        updateLocationLabel();
+
+        html = '<div class="door-card">' +
+          (book.coverUrl ? '<img class="door-cover-img" src="' + book.coverUrl + '" alt="" aria-hidden="true">' : '') +
+          '<div class="door-title-block">' +
+          '<h2>' + esc(book.title) + '</h2>' +
+          '<p class="author">' + esc(book.author) + '</p>' +
+          '</div>' +
+          '<div class="door-controls">' +
+          '<button class="icon-btn" onclick="toggleBookAudio(' + bookId + ')" aria-label="' + esc(audioAriaLabel) + '"' + (hasAudio ? '' : ' disabled') + '>' + initialPlayIcon + '</button>' +
+          '<button class="doorknob-btn" onclick="knockDoor(' + bookId + ')" aria-label="この扉を開いて詳細を見る"></button>' +
+          '<button class="icon-btn" onclick="skipDoor()" aria-label="次の扉へ進む">' + skipIconSvg + '</button>' +
+          '</div>' +
+          '</div>';
+
+      } else if (state.screen === 'room'){
+        var rid = state.bookId;
+        var rbook = BOOKS[rid];
+        var isFav = state.favorites.indexOf(rid) > -1;
+        var favLabel = isFav ? 'お気に入りから削除' : 'お気に入りに追加';
+        html =
+          // Book header
+          '<div class="book-card">' +
+          '<p class="label">表示中</p>' +
+          '<h2 style="font-size:22px;">' + esc(rbook.title) + '</h2>' +
+          '<p class="author">' + esc(rbook.author) + '</p>' +
+          '</div>' +
+
+          // Short summary
+          '<section class="room-section" style="border-top:none;padding-top:0;margin-top:0;">' +
+          '<h3 class="room-heading">あらすじ</h3>' +
+          '<p class="summary">' + esc(rbook.summary) + '</p>' +
+          '</section>' +
+
+          // Detailed summary
+          '<section class="room-section">' +
+          '<div class="row">' +
+          '<h3 class="room-heading" style="margin:0;">詳しいあらすじ</h3>' +
+          '<button onclick="toggleDetailedAccordion()" aria-expanded="' + state.showDetailed + '" style="width:auto;font-size:14px;padding:8px 14px;">' +
+          (state.showDetailed ? '閉じる' : '表示') + '</button>' +
+          '</div>' +
+          (state.showDetailed
+            ? '<div class="detail-box">' + esc(rbook.detailedSummary) + '</div>'
+            : '<p style="font-size:14px;color:var(--muted);margin:0;">「表示」を押すと続きが読めます。</p>') +
+          '</section>' +
+
+          // Actions (3 square buttons)
+          '<section class="room-section" aria-label="アクション">' +
+          '<h3 class="room-heading" aria-label="アクション、下に3つの操作があります">アクション</h3>' +
+          '<div class="action-row">' +
+          '<button onclick="startReading(' + rid + ')" aria-label="読み始める">読み始める</button>' +
+          '<button onclick="toggleFavorite(' + rid + ')" aria-pressed="' + isFav + '" aria-label="' + esc(favLabel) + '">' + esc(favLabel) + '</button>' +
+          '<button onclick="openFeedback(' + rid + ')" aria-label="音楽へのフィードバックを送る">音楽の感想</button>' +
+          '</div>' +
+          '</section>' +
+
+          // Path (2 buttons)
+          '<section class="room-section">' +
+          '<h3 class="room-heading">進む</h3>' +
+          '<div class="path-row">' +
+          '<button onclick="goThrough(' + rid + ')" aria-label="関連する扉を探す">関連する扉を探す</button>' +
+          '<button onclick="returnToCorridor()" aria-label="廊下に戻る">廊下に戻る</button>' +
+          '</div>' +
+          '</section>';
+
+      } else if (state.screen === 'through'){
+        // 3 doors: front = Similar, left = Style, right = Related
+        html = '<h2 class="section-heading">関連する扉を選ぶ</h2>' +
+          '<div class="through-space">' +
+          // Front door
+          '<button class="through-door through-door-front" onclick="branchToCorridor(\'Similar\')" aria-label="正面の扉：この本を見た人はこんな本も">' +
+          '<span class="door-direction">正面</span>' +
+          'この本を見た人は<br>こんな本も' +
+          '<span class="door-knob" aria-hidden="true"></span>' +
+          '</button>' +
+          '<button class="through-door through-door-left" onclick="branchToCorridor(\'Style\')" aria-label="左の扉：似た雰囲気の本">' +
+          '<span class="door-direction">左</span>' +
+          '似た雰囲気の本' +
+          '<span class="door-knob" aria-hidden="true"></span>' +
+          '</button>' +
+          '<button class="through-door through-door-right" onclick="branchToCorridor(\'Related\')" aria-label="右の扉：関連作品">' +
+          '<span class="door-direction">右</span>' +
+          '関連作品' +
+          '<span class="door-knob" aria-hidden="true"></span>' +
+          '</button>' +
+          '</div>';
+
+      } else if (state.screen === 'crumble'){
+        var crumbleIds = state.readBooks.slice().reverse(); // most recent first
+        if (crumbleIds.length === 0) {
+          html = '<h2 class="section-heading">足あと（履歴）</h2>' +
+            '<p class="summary">まだどの扉も見ていません。まずは図書館を探索してみてください。</p>';
+        } else {
+          html = '<h2 class="section-heading">足あと（履歴）</h2>' +
+            '<p style="font-size:14px;color:var(--muted);margin:0 0 14px;">これまで見た本を、新しい順に表示しています。タップするとその扉に戻れます。</p>' +
+            '<div class="crumble-list">' +
+            crumbleIds.map(function(id){
+              var b = BOOKS[id];
+              if (!b) return '';
+              return '<button class="crumble-item" onclick="returnToDoor(' + id + ')" aria-label="' + esc(b.title) + '、' + esc(b.author) + 'に戻る">' +
+                '<div>' + esc(b.title) + '</div>' +
+                '<div class="crumble-author">' + esc(b.author) + '</div>' +
+                '</button>';
+            }).join('') +
+            '</div>';
+        }
+
+      } else if (state.screen === 'end_corridor'){
+        html = '<h2 class="section-heading">廊下の終わり</h2>' +
+          '<p class="summary">この道のすべての扉を見終えました。メインホールに戻るか、ランダムな廊下を探索しましょう。</p>' +
+          '<div class="stack">' +
+          '<button class="primary" onclick="travelMainHall()">メインホールに戻る</button>' +
+          '<button onclick="exploreRandom()">ランダムな廊下を探索する</button>' +
+          '</div>';
+      }
+
+      stage.innerHTML = html;
+      updateLocationLabel();
+    }
+
+    // ── TOAST ─────────────────────────────────────────────────────────────────────
+    var _toastTimer = null;
+    function showToast(msg) {
+      var el = document.getElementById('toast');
+      if (!el) return;
+      el.textContent = msg;            // aria-live="polite" on this element announces it once
+      el.classList.add('visible');
+      clearTimeout(_toastTimer);
+      _toastTimer = setTimeout(function(){
+        el.classList.remove('visible');
+        el.textContent = '';           // clear content so VO never re-reads stale text later
+      }, 4000);
+    }
+
+    // ── CRUMBLE PATH ──────────────────────────────────────────────────────────────
+    function openCrumblePath(){
+      stopAudio();
+      state.screen = 'crumble';
+      pushHistory();
+      closeTravelMenu();
+      render();
+      announce('足あと（履歴）。これまで' + state.readBooks.length + '冊の本を見ました。新しい順に表示しています。');
+      focusStage();
+    }
+
+    function returnToDoor(bookId){
+      stopAudio();
+      // Open the room for that book without needing to find it in a corridor
+      if (state.readBooks.indexOf(bookId) === -1) state.readBooks.push(bookId);
+      state.screen = 'room';
+      state.bookId = bookId;
+      state.showDetailed = false;
+      pushHistory();
+      render();
+      var b = BOOKS[bookId];
+      announce((b ? b.title + '、' + b.author : '本') + 'に戻りました。');
+      focusStage();
+    }
+
+    // ── FEEDBACK DRAWER ──────────────────────────────────────────────────────────
+    var _feedbackBookId = null;
+    var _feedbackScore  = null;
+
+    function openFeedback(bookId) {
+      _feedbackBookId = bookId;
+      _feedbackScore  = null;
+
+      // Build scale buttons 1–10
+      var row = document.getElementById('scale-row');
+      if (row) {
+        row.innerHTML = '';
+        for (var i = 1; i <= 10; i++) {
+          (function(n){
+            var btn = document.createElement('button');
+            btn.textContent = n;
+            btn.setAttribute('aria-label', '10点中' + n + '点');
+            btn.setAttribute('aria-pressed', 'false');
+            btn.onclick = function() {
+              _feedbackScore = n;
+              var all = row.querySelectorAll('button');
+              all.forEach(function(b){ b.classList.remove('selected'); b.setAttribute('aria-pressed','false'); });
+              btn.classList.add('selected');
+              btn.setAttribute('aria-pressed', 'true');
+            };
+            row.appendChild(btn);
+          })(i);
+        }
+      }
+
+      // Reset fields
+      var cb = document.getElementById('fb-read-check');
+      if (cb) cb.checked = false;
+      var ta = document.getElementById('fb-comment');
+      if (ta) ta.value = '';
+
+      var drawer = document.getElementById('feedback-drawer');
+      if (drawer) {
+        drawer.classList.add('open');
+        drawer.setAttribute('aria-hidden', 'false');
+        announce('フィードバックパネルを開きました。音楽が本の雰囲気にどれだけ合っているかを1から10で評価してください。');
+        // Focus first scale button
+        var first = drawer.querySelector('.scale-row button');
+        if (first) setTimeout(function(){ try { first.focus(); } catch(e){} }, 100);
+      }
+    }
+
+    function closeFeedback() {
+      var drawer = document.getElementById('feedback-drawer');
+      if (drawer) {
+        drawer.classList.remove('open');
+        drawer.setAttribute('aria-hidden', 'true');
+        announce('フィードバックパネルを閉じました。');
+      }
+    }
+
+    function submitFeedback() {
+      closeFeedback();
+      showToast('フィードバックありがとうございます。あなたのご意見がシステムの改善に役立ちます。');
+    }
+
+    function flagMusic() {
+      closeFeedback();
+      showToast('ご報告ありがとうございます。この音楽を確認いたします。');
+    }
+
+    // ── LOCATION LABEL ──────────────────────────────────────────────────────────
+    function updateLocationLabel(){
+      var el = document.getElementById('location-label');
+      if (!el) return;
+      var parts = [];
+      if (state.currentWing) parts.push(state.currentWing);
+      if (state.currentFloor) parts.push(state.currentFloor);
+      var text = parts.join(' — ');
+      if (el.textContent !== text) el.textContent = text;
+    }
+    function openCurrentLocation(){
+      var parts = [];
+      if (state.currentWing) parts.push(state.currentWing);
+      if (state.currentFloor) parts.push(state.currentFloor);
+      announce('現在地：' + (parts.join('、') || 'メインホール'));
+    }
+
+    // ── EXPOSE handlers used by inline onclick ────────────────────────────────
+    window.openCrumblePath = openCrumblePath;
+    window.returnToDoor    = returnToDoor;
+    window.openFeedback   = openFeedback;
+    window.closeFeedback  = closeFeedback;
+    window.submitFeedback = submitFeedback;
+    window.flagMusic      = flagMusic;
+    window.enterMainHall = enterMainHall;
+    window.updateLocationLabel = updateLocationLabel;
+    window.selectWing = selectWing;
+    window.selectFloor = selectFloor;
+    window.skipDoor = skipDoor;
+    window.knockDoor = knockDoor;
+    window.returnToCorridor = returnToCorridor;
+    window.goThrough = goThrough;
+    window.branchToCorridor = branchToCorridor;
+    window.toggleFavorite = toggleFavorite;
+    window.startReading = startReading;
+    window.exploreRandom = exploreRandom;
+    window.toggleBookAudio = toggleBookAudio;
+    window.toggleDetailedAccordion = toggleDetailedAccordion;
+    window.openTravelMenu = openTravelMenu;
+    window.closeTravelMenu = closeTravelMenu;
+    window.travelBack = travelBack;
+    window.travelBeginning = travelBeginning;
+    window.travelMainHall = travelMainHall;
+
+    // ── KEYBOARD: close modal on Escape ───────────────────────────────────────
+    document.addEventListener('keydown', function(e){
+      if (e.key === 'Escape'){
+        var modal = document.getElementById('travel-modal-backdrop');
+        if (modal && !modal.classList.contains('hidden')) { closeTravelMenu(); return; }
+        var drawer = document.getElementById('feedback-drawer');
+        if (drawer && drawer.classList.contains('open')) { closeFeedback(); return; }
+      }
+    });
+
+    // ── SWIPE LEFT → next door (non-VoiceOver) ───────────────────────────────
+    // Tracks a single touch; left-swipe of 50px+ on corridor screen = skipDoor()
+    var _swipeStartX = null;
+    var _swipeStartY = null;
+    document.addEventListener('touchstart', function(e){
+      if (state.screen !== 'corridor') return;
+      var t = e.touches[0];
+      _swipeStartX = t.clientX;
+      _swipeStartY = t.clientY;
+    }, { passive: true });
+
+    document.addEventListener('touchend', function(e){
+      if (state.screen !== 'corridor') return;
+      if (_swipeStartX === null) return;
+      var t = e.changedTouches[0];
+      var dx = t.clientX - _swipeStartX;
+      var dy = t.clientY - _swipeStartY;
+      _swipeStartX = null;
+      _swipeStartY = null;
+      // Must be more horizontal than vertical, and at least 50px left
+      if (Math.abs(dx) < 50) return;
+      if (Math.abs(dy) > Math.abs(dx)) return;
+      if (dx < 0) {
+        skipDoor();   // left swipe → next door
+      }
+    }, { passive: true });
+
+    // ── VOICEOVER SCROLL → next door ────────────────────────────────────────────
+    var _voScrollTimer = null;
+    window.addEventListener('scroll', function(){
+      if (state.screen !== 'corridor') return;
+      clearTimeout(_voScrollTimer);
+      _voScrollTimer = setTimeout(function(){
+        skipDoor();
+        window.scrollTo(0, 0);
+      }, 80);
+    }, { passive: true });
+
+    // ── TWO-FINGER SWIPE: VoiceOver next/prev page ───────────────────────────────
+    // VoiceOver intercepts single-finger gestures, but two-finger swipe
+    // (used as "scroll page") is detectable via touch events.
+    // Left = next door, Right = go back (travelBack).
+    var _vo2StartX = null;
+    document.addEventListener('touchstart', function(e){
+      if (e.touches.length === 2){
+        _vo2StartX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      }
+    }, { passive: true });
+    document.addEventListener('touchend', function(e){
+      if (_vo2StartX === null) return;
+      var endX = e.changedTouches[0] ? e.changedTouches[0].clientX : _vo2StartX;
+      var dx = endX - _vo2StartX;
+      _vo2StartX = null;
+      if (Math.abs(dx) < 40) return;
+      if (dx < 0){
+        // Two-finger left → next door
+        if (state.screen === 'corridor') skipDoor();
+      } else {
+        // Two-finger right → back
+        travelBack();
+      }
+    }, { passive: true });
+
+    // ── BOOT (runs immediately; script is at end of body) ─────────────────────
+    try {
+      initHistory();
+      render();
+      var guideKey = 'spatial_guide_seen';
+      var seen = false;
+      try { seen = !!localStorage.getItem(guideKey); } catch(e){}
+      if (!seen){
+        announce('デジタル図書館へようこそ。あなたはメインホールにいます。4つのウィングが周りを囲んでいます。フィクションの北ウィング、ライフスタイルの南ウィング、サイエンスの西ウィング、社会の東ウィング。ウィングを選んで始めてください。');
+        try { localStorage.setItem(guideKey,'true'); } catch(e){}
+      } else {
+        announce('あなたはメインホールにいます。4つのウィングから好きなものを選んで探索してください。');
+      }
+    } catch (err) {
+      showFatal(err && err.message ? err.message : String(err));
+    }
+  })();
+  </script>
+  <!-- Toast notification -->
+  <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Music feedback drawer -->
+  <div id="feedback-drawer" class="feedback-drawer" role="dialog" aria-modal="true" aria-label="音楽へのフィードバック" aria-hidden="true">
+    <h2>音楽の感想</h2>
+
+    <div class="feedback-field">
+      <label id="scale-label">この音楽は本の雰囲気にどれくらい合っていますか？（1〜10）</label>
+      <div class="scale-row" role="group" aria-labelledby="scale-label" id="scale-row"></div>
+    </div>
+
+    <div class="feedback-field">
+      <label>
+        <div class="check-row">
+          <input type="checkbox" id="fb-read-check" />
+          <span>この本を読んだことがあります</span>
+        </div>
+      </label>
+    </div>
+
+    <div class="feedback-field">
+      <label for="fb-comment">コメント（任意）</label>
+      <textarea class="feedback-text" id="fb-comment" placeholder="ご感想をお聞かせください…" aria-label="音楽へのコメント"></textarea>
+    </div>
+
+    <div class="feedback-actions">
+      <button class="primary" onclick="submitFeedback()" aria-label="フィードバックを送信">送信</button>
+      <button onclick="closeFeedback()" aria-label="フィードバックパネルを閉じる">閉じる</button>
+    </div>
+
+    <div class="flag-row">
+      <button class="flag-btn" onclick="flagMusic()" aria-label="この音楽を不適切として報告する">
+        この音楽を不適切として報告
+      </button>
+    </div>
+  </div>
+
+</body>
+</html>
